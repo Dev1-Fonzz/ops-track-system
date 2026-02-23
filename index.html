@@ -13,7 +13,7 @@
         body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
         
-        #map { height: 100%; width: 100%; border-radius: 0; z-index: 1; }
+        #map-full, #map-mini { height: 100%; width: 100%; z-index: 1; outline: none; }
         .hidden-view { display: none !important; }
         .fade-in { animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
         
@@ -43,23 +43,28 @@
             50% { transform: scale(1.5); opacity: 0.5; }
             100% { transform: scale(1); opacity: 1; }
         }
-    </style>
+        
+        /* Fix for Leaflet Marker Icon in Bundled/Module env */
+        .leaflet-default-icon-path {
+            background-image: url(https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png);
+        }    </style>
 </head>
 <body class="antialiased min-h-screen flex flex-col">
 
-    <!-- HEADER -->    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50">
+    <!-- HEADER -->
+    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50">
         <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
             <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold">
+                <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/30">
                     <i class="fa-solid fa-satellite-dish"></i>
                 </div>
                 <div>
-                    <h1 class="font-bold text-lg tracking-tight text-white">OpsTrack <span class="text-blue-400">COMMAND</span></h1>
-                    <p class="text-[10px] text-slate-400 uppercase tracking-widest">Real-time Geospatial Intelligence</p>
+                    <h1 class="font-bold text-lg tracking-tight text-white leading-tight">OpsTrack <span class="text-blue-400">COMMAND</span></h1>
+                    <p class="text-[9px] text-slate-400 uppercase tracking-widest">Geospatial Intelligence</p>
                 </div>
             </div>
-            <button onclick="app.logout()" id="btn-logout" class="hidden text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/50 px-3 py-1.5 rounded transition">
-                <i class="fa-solid fa-power-off mr-1"></i> TERMINATE
+            <button onclick="window.app.logout()" id="btn-logout" class="hidden text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/50 px-3 py-1.5 rounded transition active:scale-95">
+                <i class="fa-solid fa-power-off mr-1"></i> <span class="hidden md:inline">TERMINATE</span>
             </button>
         </div>
     </header>
@@ -72,13 +77,13 @@
                 <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
                 
                 <div class="mb-8">
-                    <i class="fa-solid fa-globe text-5xl text-blue-500 mb-4 drop-shadow-lg"></i>
+                    <i class="fa-solid fa-globe text-5xl text-blue-500 mb-4 drop-shadow-lg animate-pulse"></i>
                     <h2 class="text-2xl font-bold text-white">Sistem Pemantauan Strategik</h2>
                     <p class="text-slate-400 text-sm mt-2">Pilih protokol akses untuk meneruskan operasi.</p>
                 </div>
                 
                 <div class="space-y-4">
-                    <button onclick="app.nav('admin')" class="group w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-between shadow-lg hover:shadow-blue-500/10">
+                    <button onclick="window.app.nav('admin')" class="group w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-between shadow-lg hover:shadow-blue-500/10 active:scale-95">
                         <div class="flex items-center gap-3">
                             <div class="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center text-blue-400 group-hover:text-blue-300">
                                 <i class="fa-solid fa-user-shield"></i>
@@ -91,12 +96,12 @@
                         <i class="fa-solid fa-chevron-right text-slate-600 group-hover:text-white transition"></i>
                     </button>
                     
-                    <div class="relative flex py-2 items-center">
-                        <div class="flex-grow border-t border-slate-700"></div>
+                    <div class="relative flex py-2 items-center">                        <div class="flex-grow border-t border-slate-700"></div>
                         <span class="flex-shrink mx-4 text-slate-500 text-xs uppercase">Protokol Alternatif</span>
                         <div class="flex-grow border-t border-slate-700"></div>
                     </div>
-                    <button onclick="app.nav('driver-setup')" class="group w-full bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-between shadow-lg hover:shadow-blue-500/25">
+
+                    <button onclick="window.app.nav('driver-setup')" class="group w-full bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-between shadow-lg hover:shadow-blue-500/25 active:scale-95">
                         <div class="flex items-center gap-3">
                             <div class="w-8 h-8 rounded bg-white/20 flex items-center justify-center text-white">
                                 <i class="fa-solid fa-location-crosshairs"></i>
@@ -123,8 +128,8 @@
                 <div class="space-y-4">
                     <div>
                         <label class="block text-xs font-bold text-slate-300 uppercase mb-1">ID Unit / Nama Pemandu</label>
-                        <input type="text" id="driver-name-input" placeholder="cth: ALPHA-01 / Ali" 
-                            class="w-full bg-slate-900/50 border border-slate-700 text-white p-3 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-mono uppercase transition">
+                        <input type="text" id="driver-name-input" placeholder="cth: ALPHA-01" 
+                            class="w-full bg-slate-900/50 border border-slate-700 text-white p-3 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-mono uppercase transition placeholder-slate-600">
                     </div>
                     
                     <div class="bg-blue-900/20 border border-blue-500/30 p-3 rounded-lg flex gap-3 items-start">
@@ -132,20 +137,20 @@
                         <p class="text-xs text-blue-200">Sistem memerlukan akses GPS berketepatan tinggi. Sila pastikan perkhidmatan lokasi dihidupkan.</p>
                     </div>
 
-                    <button onclick="app.initDriver()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+                    <button onclick="window.app.initDriver()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
                         <i class="fa-solid fa-play"></i> MULAKAN TELEMETRI
                     </button>
-                    <button onclick="app.nav('landing')" class="w-full text-slate-500 hover:text-slate-300 text-sm py-2">Batal & Kembali</button>
+                    <button onclick="window.app.nav('landing')" class="w-full text-slate-500 hover:text-slate-300 text-sm py-2">Batal & Kembali</button>
                 </div>
             </div>
         </div>
 
-        <!-- 3. DRIVER ACTIVE DASHBOARD -->
-        <div id="view-driver-active" class="hidden-view fade-in h-full flex flex-col">
+        <!-- 3. DRIVER ACTIVE DASHBOARD -->        <div id="view-driver-active" class="hidden-view fade-in h-full flex flex-col">
             <!-- Status Header -->
-            <div class="glass-panel p-4 rounded-xl mb-4 flex justify-between items-center border-l-4 border-green-500">
+            <div class="glass-panel p-4 rounded-xl mb-4 flex justify-between items-center border-l-4 border-green-500 shadow-lg shadow-green-900/20">
                 <div>
-                    <h2 id="active-driver-name" class="text-lg font-bold text-white font-mono">-</h2>                    <div class="flex items-center gap-2 mt-1">
+                    <h2 id="active-driver-name" class="text-lg font-bold text-white font-mono">-</h2>
+                    <div class="flex items-center gap-2 mt-1">
                         <span class="status-dot status-live"></span>
                         <span class="text-xs text-green-400 font-mono">TRANSMITTING LIVE</span>
                     </div>
@@ -158,44 +163,44 @@
 
             <!-- Metrics Grid -->
             <div class="grid grid-cols-2 gap-4 mb-4">
-                <div class="glass-panel p-4 rounded-xl border border-slate-700/50">
+                <div class="glass-panel p-4 rounded-xl border border-slate-700/50 shadow-lg">
                     <div class="text-xs text-slate-400 uppercase mb-1">Jarak Dilalui</div>
                     <div class="text-2xl font-mono font-bold text-white"><span id="driver-dist">0.00</span> <span class="text-sm text-slate-500">km</span></div>
                 </div>
-                <div class="glass-panel p-4 rounded-xl border border-slate-700/50">
+                <div class="glass-panel p-4 rounded-xl border border-slate-700/50 shadow-lg">
                     <div class="text-xs text-slate-400 uppercase mb-1">Kelajuan Semasa</div>
                     <div class="text-2xl font-mono font-bold text-blue-400"><span id="driver-speed">0</span> <span class="text-sm text-slate-500">km/h</span></div>
                 </div>
             </div>
 
             <!-- Map Preview (Small) -->
-            <div class="flex-1 glass-panel rounded-xl overflow-hidden relative mb-4 border border-slate-700/50 min-h-[200px]">
+            <div class="flex-1 glass-panel rounded-xl overflow-hidden relative mb-4 border border-slate-700/50 min-h-[200px] shadow-lg">
                 <div id="map-mini" class="absolute inset-0 bg-slate-800"></div>
-                <div class="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded font-mono">
+                <div class="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded font-mono pointer-events-none">
                     LIVE PREVIEW
                 </div>
             </div>
 
-            <button onclick="app.stopDriver()" class="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/50 text-red-400 font-bold py-4 rounded-xl transition flex items-center justify-center gap-2">
-                <i class="fa-solid fa-stop"></i> TAMATKAN SESI & PUTUS SAMBUNGAN
+            <button onclick="window.app.stopDriver()" class="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/50 text-red-400 font-bold py-4 rounded-xl transition flex items-center justify-center gap-2 active:scale-95 shadow-lg">
+                <i class="fa-solid fa-stop"></i> TAMATKAN SESI
             </button>
             
-            <!-- Error Alert Box (Hidden by default) -->
-            <div id="gps-error-box" class="hidden mt-4 bg-red-900/20 border border-red-500/50 p-4 rounded-xl">
+            <!-- Error Alert Box -->
+            <div id="gps-error-box" class="hidden mt-4 bg-red-900/20 border border-red-500/50 p-4 rounded-xl animate-pulse">
                 <h4 class="text-red-400 font-bold text-sm mb-1"><i class="fa-solid fa-triangle-exclamation"></i> Amaran Sistem</h4>
                 <p class="text-xs text-red-200" id="gps-error-msg">Tidak dapat mengakses GPS.</p>
-                <button onclick="app.retryGPS()" class="mt-2 text-xs bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Cuba Semula</button>
+                <button onclick="window.app.retryGPS()" class="mt-2 text-xs bg-red-500 text-white px-3 py-1.5 rounded hover:bg-red-600 font-bold shadow-lg">Cuba Semula</button>
             </div>
         </div>
 
         <!-- 4. ADMIN COMMAND CENTER -->
-        <div id="view-admin" class="hidden-view fade-in h-full flex flex-col">
-            <div class="flex justify-between items-end mb-6">
+        <div id="view-admin" class="hidden-view fade-in h-full flex flex-col">            <div class="flex justify-between items-end mb-6">
                 <div>
                     <h2 class="text-2xl font-bold text-white">Papan Pemuka Operasi</h2>
-                    <p class="text-slate-400 text-xs font-mono mt-1">MONITORING ALL ACTIVE UNITS // REAL-TIME DATA STREAM</p>
-                </div>                <button onclick="app.loadAdminData()" class="text-blue-400 hover:text-blue-300 text-xs font-mono border border-blue-500/30 px-3 py-1.5 rounded hover:bg-blue-500/10 transition">
-                    <i class="fa-solid fa-rotate"></i> SEGARKAN DATA
+                    <p class="text-slate-400 text-xs font-mono mt-1">MONITORING ALL ACTIVE UNITS</p>
+                </div>
+                <button onclick="window.app.loadAdminData()" class="text-blue-400 hover:text-blue-300 text-xs font-mono border border-blue-500/30 px-3 py-1.5 rounded hover:bg-blue-500/10 transition active:scale-95">
+                    <i class="fa-solid fa-rotate"></i> REFRESH
                 </button>
             </div>
 
@@ -203,18 +208,18 @@
             <div id="admin-unit-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 overflow-y-auto max-h-[60vh] pb-4">
                 <div class="col-span-full text-center py-12 glass-panel rounded-xl border border-slate-700/50">
                     <i class="fa-solid fa-circle-notch fa-spin text-3xl text-blue-500 mb-3"></i>
-                    <p class="text-slate-400 text-sm">Mengimbas rangkaian untuk unit aktif...</p>
+                    <p class="text-slate-400 text-sm">Mengimbas rangkaian...</p>
                 </div>
             </div>
 
-            <!-- Full Screen Map Overlay (Hidden initially) -->
+            <!-- Full Screen Map Overlay -->
             <div id="admin-map-overlay" class="hidden-view fixed inset-0 z-[60] bg-slate-900 flex flex-col">
                 <div class="bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center shadow-lg">
                     <div class="flex items-center gap-3">
                         <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                         <h3 class="font-bold text-white font-mono" id="map-unit-title">UNIT ID: -</h3>
                     </div>
-                    <button onclick="app.closeMap()" class="text-slate-400 hover:text-white transition">
+                    <button onclick="window.app.closeMap()" class="text-slate-400 hover:text-white transition active:scale-90">
                         <i class="fa-solid fa-times text-xl"></i>
                     </button>
                 </div>
@@ -223,7 +228,7 @@
                     <div id="map-full" class="absolute inset-0"></div>
                     
                     <!-- Floating Stats Card -->
-                    <div class="absolute top-4 left-4 glass-panel p-3 rounded-lg shadow-xl border border-slate-700/50 max-w-xs">
+                    <div class="absolute top-4 left-4 glass-panel p-3 rounded-lg shadow-xl border border-slate-700/50 max-w-xs w-full">
                         <h4 class="text-xs font-bold text-slate-300 uppercase mb-2 border-b border-slate-700 pb-1">Analitik Misi</h4>
                         <div class="grid grid-cols-2 gap-3 text-xs font-mono">
                             <div>
@@ -238,12 +243,12 @@
                                 <span class="block text-slate-500">Checkpoint</span>
                                 <span class="text-blue-400 font-bold" id="stat-points">0</span>
                             </div>
-                            <div>
-                                <span class="block text-slate-500">Jarak</span>
+                            <div>                                <span class="block text-slate-500">Jarak</span>
                                 <span class="text-white" id="stat-dist">0 km</span>
                             </div>
                         </div>
-                    </div>                </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -252,7 +257,7 @@
     <!-- FIREBASE & LOGIC CORE -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, update, onValue, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, update, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         // --- CONFIGURATION ---
@@ -282,36 +287,47 @@
             mapFull: null,
             pathLine: null,
             marker: null,
-            pathCoords: []
+            pathCoords: [],
+            markerMini: null
         };
 
         // --- APP CONTROLLER ---
-        const app = {
-            nav: (view) => {
+        const appController = {            nav: (view) => {
                 document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden-view'));
                 document.getElementById(`view-${view}`).classList.remove('hidden-view');
                 
                 const logoutBtn = document.getElementById('btn-logout');
-                if(view === 'landing') logoutBtn.classList.add('hidden');                else logoutBtn.classList.remove('hidden');
+                if(view === 'landing') logoutBtn.classList.add('hidden');
+                else logoutBtn.classList.remove('hidden');
 
-                if(view === 'admin') app.loadAdminData();
-                if(view === 'driver-active' && !state.mapMini) app.initMiniMap();
+                if(view === 'admin') appController.loadAdminData();
+                if(view === 'driver-active') {
+                    // Delay map init slightly to ensure container is visible
+                    setTimeout(() => appController.initMiniMap(), 100);
+                }
             },
 
             logout: () => {
                 if(state.watchId) navigator.geolocation.clearWatch(state.watchId);
                 if(state.timerInt) clearInterval(state.timerInt);
                 if(state.sessionId) {
-                    update(ref(db, `sessions/${state.sessionId}`), { status: 'terminated' });
+                    update(ref(db, `sessions/${state.sessionId}`), { status: 'terminated' }).catch(console.error);
                 }
                 state.sessionId = null;
-                app.nav('landing');
+                appController.nav('landing');
             },
 
             // --- DRIVER LOGIC ---
             initDriver: async () => {
-                const name = document.getElementById('driver-name-input').value.toUpperCase().trim();
-                if(!name) return alert("Sila masukkan ID Unit!");
+                const nameInput = document.getElementById('driver-name-input');
+                const name = nameInput.value.toUpperCase().trim();
+                
+                if(!name) {
+                    nameInput.focus();
+                    nameInput.classList.add('border-red-500');
+                    setTimeout(() => nameInput.classList.remove('border-red-500'), 2000);
+                    return;
+                }
 
                 try {
                     await signInAnonymously(auth);
@@ -320,31 +336,29 @@
                     state.totalDist = 0;
                     state.lastPos = null;
 
-                    // Create Session in DB
                     await set(ref(db, `sessions/${state.sessionId}`), {
                         name: name,
                         status: 'active',
                         startTime: state.startTime,
                         lastUpdate: Date.now(),
-                        distance: 0,
-                        speed: 0,
+                        distance: 0,                        speed: 0,
                         path: {}
                     });
 
                     document.getElementById('active-driver-name').innerText = name;
                     document.getElementById('gps-error-box').classList.add('hidden');
-                    app.nav('driver-active');
-                    app.startTelemetry();
+                    appController.nav('driver-active');
+                    appController.startTelemetry();
 
                 } catch (e) {
                     console.error("Auth Error:", e);
                     alert("Ralat Sistem: " + e.message);
                 }
             },
+
             startTelemetry: () => {
                 let seconds = 0;
                 
-                // Timer UI
                 state.timerInt = setInterval(() => {
                     seconds++;
                     const h = Math.floor(seconds/3600).toString().padStart(2,'0');
@@ -353,65 +367,55 @@
                     document.getElementById('tracking-timer').innerText = `${h}:${m}:${s}`;
                 }, 1000);
 
-                // GPS Logic with Robust Error Handling
                 if(!navigator.geolocation) {
-                    app.showGPSError("Peranti ini tidak menyokong GPS.");
+                    appController.showGPSError("Peranti ini tidak menyokong GPS.");
                     return;
                 }
 
                 state.watchId = navigator.geolocation.watchPosition(
                     async (pos) => {
-                        // Success Callback
                         document.getElementById('gps-error-box').classList.add('hidden');
                         
                         const lat = pos.coords.latitude;
                         const lng = pos.coords.longitude;
-                        const spd = (pos.coords.speed || 0) * 3.6; // m/s to km/h
+                        const spd = (pos.coords.speed || 0) * 3.6; 
                         const now = Date.now();
 
-                        // Calc Distance
                         if(state.lastPos) {
-                            state.totalDist += app.getDist(state.lastPos.lat, state.lastPos.lng, lat, lng);
+                            state.totalDist += appController.getDist(state.lastPos.lat, state.lastPos.lng, lat, lng);
                         }
                         state.lastPos = {lat, lng};
 
-                        // Prepare Data
                         const updates = {
                             [`sessions/${state.sessionId}/lastUpdate`]: now,
                             [`sessions/${state.sessionId}/speed`]: Math.round(spd),
                             [`sessions/${state.sessionId}/distance`]: parseFloat(state.totalDist.toFixed(2)),
-                            [`sessions/${state.sessionId}/path/${now}`]: { lat, lng, s: Math.round(spd) }
-                        };
+                            [`sessions/${state.sessionId}/path/${now}`]: { lat, lng, s: Math.round(spd) }                        };
 
-                        // Update DB
                         try {
                             await update(ref(db, `sessions/${state.sessionId}`), updates);
                             
-                            // Update UI
                             document.getElementById('driver-dist').innerText = state.totalDist.toFixed(2);
                             document.getElementById('driver-speed').innerText = Math.round(spd);
-                                                        // Update Mini Map if exists
+                            
                             if(state.mapMini) {
-                                app.updateMapPosition(state.mapMini, lat, lng);
+                                appController.updateMapPosition(state.mapMini, lat, lng);
                             }
 
                         } catch (err) {
                             console.error("DB Write Error:", err);
-                            // If permission denied in DB rules, show specific error
                             if(err.code === 'PERMISSION_DENIED') {
-                                app.showGPSError("Akses Database Ditolak. Semak Firebase Rules.");
+                                appController.showGPSError("Akses Database Ditolak. Semak Firebase Rules.");
                             }
                         }
                     },
                     (err) => {
-                        // Error Callback
                         console.warn("GPS Error:", err);
                         let msg = "Gagal mendapatkan lokasi GPS.";
-                        if(err.code === 1) msg = "AKSES DITOLAK: Sila benarkan lokasi di setting browser/peranti anda.";
-                        if(err.code === 2) msg = "Lokasi Tidak Tersedia: Signal lemah atau GPS dimatikan.";
+                        if(err.code === 1) msg = "AKSES DITOLAK: Sila benarkan lokasi di setting browser.";
+                        if(err.code === 2) msg = "Lokasi Tidak Tersedia: Signal lemah.";
                         if(err.code === 3) msg = "Timeout: Terlalu lama mendapatkan signal.";
-                        
-                        app.showGPSError(msg);
+                        appController.showGPSError(msg);
                     },
                     { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
                 );
@@ -426,7 +430,7 @@
 
             retryGPS: () => {
                 if(state.watchId) navigator.geolocation.clearWatch(state.watchId);
-                app.startTelemetry();
+                appController.startTelemetry();
             },
 
             stopDriver: async () => {
@@ -435,24 +439,29 @@
                 if(state.timerInt) clearInterval(state.timerInt);
                 
                 await update(ref(db, `sessions/${state.sessionId}`), { status: 'completed', endTime: Date.now() });
-                state.sessionId = null;
-                app.nav('landing');
+                state.sessionId = null;                appController.nav('landing');
             },
 
-            initMiniMap: () => {                if(state.mapMini) return;
-                setTimeout(() => {
+            initMiniMap: () => {
+                if(state.mapMini) return;
+                try {
                     state.mapMini = L.map('map-mini').setView([3.1390, 101.6869], 13);
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         attribution: '',
                         zoomControl: false,
                         dragging: false,
-                        scrollWheelZoom: false
+                        scrollWheelZoom: false,
+                        doubleClickZoom: false,
+                        boxZoom: false,
+                        keyboard: false
                     }).addTo(state.mapMini);
-                }, 500);
+                } catch (e) {
+                    console.error("Map Init Error:", e);
+                }
             },
 
             updateMapPosition: (map, lat, lng) => {
-                if(!map._loaded) return;
+                if(!map || !map._loaded) return;
                 if(state.markerMini) map.removeLayer(state.markerMini);
                 state.markerMini = L.marker([lat, lng]).addTo(map);
                 map.setView([lat, lng], 15);
@@ -468,7 +477,7 @@
                     const data = snapshot.val();
                     
                     if(!data) {
-                        listEl.innerHTML = '<div class="col-span-full text-center py-12 glass-panel rounded-xl border border-slate-800"><p class="text-slate-500 text-sm">Tiada unit aktif dikesan dalam rangkaian.</p></div>';
+                        listEl.innerHTML = '<div class="col-span-full text-center py-12 glass-panel rounded-xl border border-slate-800"><p class="text-slate-500 text-sm">Tiada unit aktif dikesan.</p></div>';
                         return;
                     }
 
@@ -477,18 +486,18 @@
                         if(val.status === 'completed' || val.status === 'terminated') return;
                         hasActive = true;
 
-                        const isLagging = (Date.now() - val.lastUpdate) > 60000; // > 1 min
+                        const isLagging = (Date.now() - val.lastUpdate) > 60000;
                         const statusClass = isLagging ? 'border-yellow-500/50 bg-yellow-900/10' : 'border-green-500/50 bg-green-900/10';
-                        const dotClass = isLagging ? 'status-warn' : 'status-live';
-                        const timeAgo = Math.floor((Date.now() - val.lastUpdate)/1000) + 's';
+                        const dotClass = isLagging ? 'status-warn' : 'status-live';                        const timeAgo = Math.floor((Date.now() - val.lastUpdate)/1000) + 's';
 
                         const card = document.createElement('div');
-                        card.className = `${statusClass} border-l-4 p-4 rounded-xl cursor-pointer hover:bg-slate-800 transition shadow-lg backdrop-blur-sm`;
-                        card.onclick = () => app.openFullMap(key, val);
+                        card.className = `${statusClass} border-l-4 p-4 rounded-xl cursor-pointer hover:bg-slate-800 transition shadow-lg backdrop-blur-sm active:scale-95`;
+                        card.onclick = () => appController.openFullMap(key, val);
                         
                         card.innerHTML = `
                             <div class="flex justify-between items-start mb-2">
-                                <div>                                    <h4 class="font-bold text-white text-lg font-mono">${val.name}</h4>
+                                <div>
+                                    <h4 class="font-bold text-white text-lg font-mono">${val.name}</h4>
                                     <div class="text-[10px] text-slate-400 font-mono">ID: ${key.substr(-8)}</div>
                                 </div>
                                 <div class="text-right">
@@ -521,26 +530,22 @@
                 overlay.classList.remove('hidden-view');
                 document.getElementById('map-unit-title').innerText = `UNIT: ${data.name}`;
                 
-                // Stats Init
                 document.getElementById('stat-start').innerText = new Date(data.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
                 document.getElementById('stat-dist').innerText = (data.distance || 0) + " km";
 
-                // Init Map
                 setTimeout(() => {
                     if(!state.mapFull) {
                         state.mapFull = L.map('map-full').setView([3.1390, 101.6869], 13);
                         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                            attribution: '&copy; OpenStreetMap'
-                        }).addTo(state.mapFull);
+                            attribution: '&copy; OpenStreetMap'                        }).addTo(state.mapFull);
                     } else {
                         state.mapFull.invalidateSize();
                     }
 
-                    // Reset Layers
-                    if(state.pathLine) state.mapFull.removeLayer(state.pathLine);                    if(state.marker) state.mapFull.removeLayer(state.marker);
+                    if(state.pathLine) state.mapFull.removeLayer(state.pathLine);
+                    if(state.marker) state.mapFull.removeLayer(state.marker);
                     state.pathCoords = [];
 
-                    // Process Path
                     if(data.path) {
                         const keys = Object.keys(data.path).sort();
                         document.getElementById('stat-points').innerText = keys.length;
@@ -559,7 +564,6 @@
                         }
                     }
 
-                    // Realtime Listener
                     onValue(ref(db, `sessions/${id}`), (snap) => {
                         const v = snap.val();
                         if(!v || !v.path) return;
@@ -574,7 +578,6 @@
                         if(state.pathLine) state.pathLine.setLatLngs(newCoords);
                         if(state.marker && newCoords.length) {
                             state.marker.setLatLng(newCoords[newCoords.length-1]);
-                            // Optional: Auto pan if lagging? Better not for UX.
                         }
                     });
 
@@ -584,9 +587,8 @@
             closeMap: () => {
                 document.getElementById('admin-map-overlay').classList.add('hidden-view');
             },
-
-            // Helper Math
-            getDist: (lat1, lon1, lat2, lon2) => {                const R = 6371; 
+            getDist: (lat1, lon1, lat2, lon2) => {
+                const R = 6371; 
                 const dLat = (lat2-lat1) * Math.PI/180;
                 const dLon = (lon2-lon1) * Math.PI/180;
                 const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
@@ -594,9 +596,13 @@
             }
         };
 
-        // Expose to window
-        window.app = app;
-        app.nav('landing');
+        // Expose to window explicitly for HTML onclick access
+        window.app = appController;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            appController.nav('landing');
+        });
     </script>
 </body>
 </html>
