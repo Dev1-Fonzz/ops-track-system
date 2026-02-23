@@ -2,275 +2,541 @@
 <html lang="ms">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpsTrack Live</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OpsTrack Pro - Sistem Jejak & Pengurusan Misi</title>
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
+    <!-- Leaflet CSS (Peta) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Font Awesome (Icon) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     <style>
-        #map { height: 300px; width: 100%; border-radius: 0.5rem; z-index: 1; }
-        .hidden-section { display: none; }
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        #map { height: 400px; width: 100%; border-radius: 0.5rem; z-index: 0; }
+        .hidden-section { display: none !important; }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
     </style>
 </head>
-<body class="bg-gray-100 font-sans">
+<body class="text-gray-800">
 
-    <!-- Navbar Pilihan Mode -->
-    <nav class="bg-blue-600 p-4 text-white shadow-lg sticky top-0 z-50">
-        <div class="flex justify-between items-center max-w-md mx-auto">
-            <h1 class="font-bold text-lg">🚀 OpsTrack</h1>
-            <div class="space-x-2">
-                <button onclick="switchMode('driver')" id="btn-driver" class="px-3 py-1 bg-white text-blue-600 rounded font-bold text-sm">Driver</button>
-                <button onclick="switchMode('operator')" id="btn-operator" class="px-3 py-1 bg-blue-800 text-white rounded font-bold text-sm">Operator</button>
+    <!-- ================= NAVBAR UTAMA ================= -->
+    <nav class="bg-slate-900 text-white p-4 shadow-lg sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-satellite-dish text-green-400 text-xl"></i>
+                <h1 class="font-bold text-lg tracking-wide">OpsTrack <span class="text-xs font-normal text-gray-400">Pro</span></h1>
             </div>
+            <button onclick="logout()" id="btn-logout" class="hidden text-xs bg-red-600 hover:bg-red-700 px-3 py-1 rounded transition">
+                <i class="fa-solid fa-sign-out-alt"></i> Keluar
+            </button>
         </div>
     </nav>
 
-    <div class="max-w-md mx-auto p-4">
+    <div class="max-w-5xl mx-auto p-4 pb-20">
 
-        <!-- ================= DRIVER VIEW ================= -->
-        <div id="view-driver" class="hidden-section">
-            <div class="bg-white p-6 rounded-xl shadow-md text-center mt-4">
-                <h2 class="text-xl font-bold text-gray-700 mb-2">Panel Pemandu</h2>
-                <p class="text-sm text-gray-500 mb-4">Sistem sedang mengesan lokasi anda...</p>
+        <!-- ================= HALAMAN LOGIN / PILIH ROLE ================= -->
+        <div id="page-login" class="fade-in max-w-md mx-auto mt-10">
+            <div class="bg-white p-6 rounded-xl shadow-lg text-center">                <h2 class="text-2xl font-bold mb-2">Selamat Datang</h2>
+                <p class="text-gray-500 mb-6 text-sm">Sila pilih peranan anda untuk meneruskan.</p>
                 
-                <div id="status-box" class="p-4 bg-gray-200 rounded-lg mb-4 transition-colors duration-300">
-                    <p class="text-lg font-bold" id="driver-status">Menunggu GPS...</p>
-                    <p class="text-2xl font-mono font-black mt-2" id="distance-display">0 m</p>
-                </div>
+                <div class="space-y-4">
+                    <button onclick="showSection('admin-setup')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg shadow transition transform hover:scale-105 flex items-center justify-center gap-3">
+                        <i class="fa-solid fa-user-shield"></i> Saya ADMIN / OPERATOR
+                    </button>
+                    
+                    <div class="relative flex py-2 items-center">
+                        <div class="flex-grow border-t border-gray-300"></div>
+                        <span class="flex-shrink mx-4 text-gray-400 text-xs">ATAU</span>
+                        <div class="flex-grow border-t border-gray-300"></div>
+                    </div>
 
-                <div class="text-left text-xs text-gray-400 bg-gray-50 p-2 rounded">
-                    <p>Destinasi: KLCC (Lat: 3.1579, Lng: 101.7116)</p>
-                    <p>ID Misi: MISI-001</p>
+                    <button onclick="showSection('driver-login')" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-lg shadow transition transform hover:scale-105 flex items-center justify-center gap-3">
+                        <i class="fa-solid fa-truck-fast"></i> Saya DRIVER / SASARAN
+                    </button>
                 </div>
-                
-                <p class="mt-6 text-xs text-red-400 animate-pulse">⚠️ Jangan tutup tab ini semasa memandu.</p>            </div>
+            </div>
         </div>
 
-        <!-- ================= OPERATOR VIEW ================= -->
-        <div id="view-operator" class="hidden-section">
-            <div class="bg-white p-4 rounded-xl shadow-md mt-4">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-xl font-bold text-gray-800">Dashboard Operator</h2>
-                    <span id="op-status-badge" class="px-2 py-1 bg-gray-300 text-xs rounded font-bold">LOADING</span>
-                </div>
+        <!-- ================= ADMIN: SETUP MISI BARU ================= -->
+        <div id="page-admin-setup" class="hidden-section fade-in">
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2">📍 Cipta Misi Baru</h2>
+                <form id="form-create-mission" onsubmit="createMission(event)">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-600 mb-1">ID Misi (Unik)</label>
+                            <input type="text" id="m-id" placeholder="Contoh: MISI-001" required class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none uppercase">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-600 mb-1">Nama Pemandu</label>
+                            <input type="text" id="m-driver" placeholder="Nama Driver" required class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-600 mb-1">No. Plat Kenderaan</label>
+                            <input type="text" id="m-plate" placeholder="WVR 1234" required class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none uppercase">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-600 mb-1">Jenis Kargo</label>
+                            <input type="text" id="m-cargo" placeholder="Barangan Elektronik" required class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-gray-600 mb-1">Nota Tambahan</label>
+                            <input type="text" id="m-notes" placeholder="Arahan khusus..." class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        
+                        <!-- Lokasi Destinasi -->
+                        <div class="md:col-span-2 bg-gray-50 p-3 rounded border">                            <label class="block text-xs font-bold text-gray-600 mb-2">🎯 Koordinat Destinasi</label>
+                            <div class="grid grid-cols-2 gap-2 mb-2">
+                                <input type="number" step="any" id="m-lat" placeholder="Latitude (cth: 3.1579)" required class="w-full border p-2 rounded text-sm">
+                                <input type="number" step="any" id="m-lng" placeholder="Longitude (cth: 101.7116)" required class="w-full border p-2 rounded text-sm">
+                            </div>
+                            <button type="button" onclick="getCurrentLocation('m-lat', 'm-lng')" class="text-xs bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded">
+                                <i class="fa-solid fa-location-crosshairs"></i> Guna Lokasi Saya Sekarang
+                            </button>
+                            <p class="text-xs text-gray-400 mt-1">*Boleh cari koordinat di Google Maps jika tidak pasti.</p>
+                        </div>
+                    </div>
+                    <div class="mt-6 flex gap-3">
+                        <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded shadow">
+                            <i class="fa-solid fa-plus"></i> Cipta Misi
+                        </button>
+                        <button type="button" onclick="showSection('admin-dashboard')" class="px-6 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 rounded">
+                            Batal
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
-                <!-- Info Card -->
-                <div class="grid grid-cols-2 gap-2 mb-4 text-sm">
-                    <div class="bg-blue-50 p-2 rounded">
-                        <span class="block text-xs text-gray-500">Pemandu</span>
-                        <span class="font-bold" id="op-name">-</span>
+        <!-- ================= ADMIN: DASHBOARD UTAMA ================= -->
+        <div id="page-admin-dashboard" class="hidden-section fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">📊 Dashboard Operasi</h2>
+                <button onclick="showSection('admin-setup')" class="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded shadow">
+                    <i class="fa-solid fa-plus"></i> Misi Baru
+                </button>
+            </div>
+
+            <!-- Senarai Misi Aktif -->
+            <div id="admin-mission-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Kad misi akan dijana di sini oleh JavaScript -->
+                <div class="col-span-full text-center py-10 text-gray-400">
+                    <i class="fa-solid fa-circle-notch fa-spin text-2xl"></i> Memuatkan data misi...
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= ADMIN: MONITOR LIVE (MAP) ================= -->
+        <div id="page-admin-monitor" class="hidden-section fade-in">
+            <button onclick="showSection('admin-dashboard')" class="mb-3 text-sm text-gray-600 hover:text-blue-600">
+                <i class="fa-solid fa-arrow-left"></i> Kembali ke Senarai
+            </button>
+            
+            <div class="bg-white p-4 rounded-xl shadow-md mb-4">
+                <div class="flex justify-between items-start">
+                    <div>                        <h2 id="monitor-title" class="text-xl font-bold">Monitoring Live</h2>
+                        <p id="monitor-subtitle" class="text-sm text-gray-500">-</p>
                     </div>
+                    <span id="monitor-status-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-gray-200">WAITING</span>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-2 mt-4 text-center">
                     <div class="bg-blue-50 p-2 rounded">
-                        <span class="block text-xs text-gray-500">Plat</span>
-                        <span class="font-bold" id="op-plate">-</span>
+                        <div class="text-xs text-gray-500">Jarak Lagi</div>
+                        <div id="monitor-dist" class="font-bold text-blue-700">-</div>
                     </div>
-                    <div class="bg-green-50 p-2 rounded col-span-2">
-                        <span class="block text-xs text-gray-500">Jarak Lagi</span>
-                        <span class="font-mono text-lg font-bold text-green-700" id="op-distance">-</span>
+                    <div class="bg-purple-50 p-2 rounded">
+                        <div class="text-xs text-gray-500">Kelajuan</div>
+                        <div id="monitor-speed" class="font-bold text-purple-700">-</div>
+                    </div>
+                    <div class="bg-orange-50 p-2 rounded">
+                        <div class="text-xs text-gray-500">Bateri</div>
+                        <div id="monitor-battery" class="font-bold text-orange-700">-</div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Map -->
+            <div id="map-container" class="bg-white p-2 rounded-xl shadow-md">
                 <div id="map"></div>
-                <p class="text-xs text-center text-gray-400 mt-2">Peta Live Real-time</p>
+            </div>
+
+            <div class="mt-4 bg-white p-4 rounded-xl shadow-md">
+                <h3 class="font-bold text-sm mb-2">Maklumat Lanjut</h3>
+                <ul class="text-sm space-y-2 text-gray-600" id="monitor-details">
+                    <!-- Details injected here -->
+                </ul>
+            </div>
+        </div>
+
+        <!-- ================= DRIVER: LOGIN MISI ================= -->
+        <div id="page-driver-login" class="hidden-section fade-in max-w-md mx-auto mt-10">
+            <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                <h2 class="text-2xl font-bold mb-2">Portal Pemandu</h2>
+                <p class="text-gray-500 mb-6 text-sm">Masukkan ID Misi yang diberikan oleh Admin untuk mula tracking.</p>
+                
+                <form onsubmit="driverLogin(event)" class="space-y-4">
+                    <input type="text" id="driver-mission-id" placeholder="Masukkan ID Misi (cth: MISI-001)" required class="w-full border-2 border-gray-200 p-3 rounded-lg text-center text-lg font-mono uppercase focus:border-green-500 outline-none">
+                    
+                    <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg shadow transition">
+                        <i class="fa-solid fa-play"></i> Mula Misi
+                    </button>
+                </form>
+                <p class="text-xs text-red-400 mt-4">*Pastikan GPS dihidupkan.</p>
+            </div>
+        </div>
+        <!-- ================= DRIVER: TRACKING LIVE ================= -->
+        <div id="page-driver-active" class="hidden-section fade-in">
+            <div class="bg-white p-4 rounded-xl shadow-md mb-4 flex justify-between items-center">
+                <div>
+                    <h2 class="font-bold text-lg" id="driver-mission-display">MISI -</h2>
+                    <p class="text-xs text-gray-500">Sedang menghantar lokasi...</p>
+                </div>
+                <div id="driver-connection-status" class="h-3 w-3 bg-green-500 rounded-full animate-pulse"></div>
+            </div>
+
+            <!-- Status Besar -->
+            <div id="driver-status-card" class="bg-blue-600 text-white p-6 rounded-xl shadow-lg text-center mb-4 transition-all duration-500">
+                <i class="fa-solid fa-truck-moving text-4xl mb-3"></i>
+                <h3 class="text-xl font-bold" id="driver-status-text">DALAM PERJALANAN</h3>
+                <div class="text-5xl font-black my-4 font-mono" id="driver-distance-big">0m</div>
+                <p class="text-sm opacity-80">lagi ke destinasi</p>
+            </div>
+
+            <!-- Butang Tiba Manual (Backup) -->
+            <button onclick="forceArrival()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 rounded-lg mb-4 text-sm">
+                <i class="fa-solid fa-flag-checkered"></i> Paksa Status "Tiba" (Jika GPS Salah)
+            </button>
+
+            <!-- Info Destinas -->
+            <div class="bg-white p-4 rounded-xl shadow-md">
+                <h4 class="font-bold text-sm text-gray-500 mb-1">DESTINASI</h4>
+                <p class="font-bold text-lg" id="driver-dest-name">Memuatkan...</p>
+                <p class="text-xs text-gray-400 font-mono" id="driver-dest-coords">-, -</p>
             </div>
             
-            <!-- Log Console Simple -->
-            <div class="mt-4 bg-black text-green-400 p-3 rounded text-xs font-mono h-32 overflow-y-auto" id="console-log">
-                > System initialized...<br>
+            <div class="mt-8 text-center">
+                <p class="text-xs text-gray-400">Biarkan tab ini terbuka. Lokasi dihantar setiap 5 saat.</p>
             </div>
         </div>
 
     </div>
 
-    <!-- FIREBASE SDK (Modular via CDN) -->
+    <!-- ================= FIREBASE & LOGIC ================= -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getDatabase, ref, set, onValue, push, update, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getAuth, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-        // --- KONFIGURASI ---
+        // --- KONFIGURASI FIREBASE (GUNA YANG KAUPUNYA) ---
         const firebaseConfig = {
             apiKey: "AIzaSyABchyom-zF_ZWuV7HWiDLWBaopBQ1TYxk",
-            authDomain: "ops-track-system.firebaseapp.com",            databaseURL: "https://ops-track-system-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "ops-track-system",
-            storageBucket: "ops-track-system.firebasestorage.app",
+            authDomain: "ops-track-system.firebaseapp.com",
+            databaseURL: "https://ops-track-system-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "ops-track-system",            storageBucket: "ops-track-system.firebasestorage.app",
             messagingSenderId: "706189064777",
             appId: "1:706189064777:web:03f71ed77e5c3e1f265d98"
         };
 
-        // Init Firebase
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const auth = getAuth(app);
-        const MISSION_ID = "MISI-001";
-        
-        // Destinasi (KLCC)
-        const DEST_LAT = 3.1579;
-        const DEST_LNG = 101.7116;
-        const RADIUS_TIBA = 100; // meter
+        const auth = getAuth(auth); // Default anonymous
 
-        let map, driverMarker, destMarker;
-        let currentMode = 'driver'; // default
+        let currentMissionId = null;
+        let watchId = null;
+        let map = null;
+        let driverMarker = null;
+        let destMarker = null;
+        let monitorInterval = null;
 
-        // --- FUNGSI GLOBAL (Untuk Button) ---
-        window.switchMode = (mode) => {
-            currentMode = mode;
-            document.getElementById('view-driver').style.display = mode === 'driver' ? 'block' : 'none';
-            document.getElementById('view-operator').style.display = mode === 'operator' ? 'block' : 'none';
+        // --- FUNGSI NAVIGASI UI ---
+        window.showSection = (sectionId) => {
+            document.querySelectorAll('[id^="page-"]').forEach(el => el.classList.add('hidden-section'));
+            document.getElementById(`page-${sectionId}`).classList.remove('hidden-section');
             
-            // Update Button Style
-            const btnD = document.getElementById('btn-driver');
-            const btnO = document.getElementById('btn-operator');
-            
-            if(mode === 'driver') {
-                btnD.className = "px-3 py-1 bg-white text-blue-600 rounded font-bold text-sm";
-                btnO.className = "px-3 py-1 bg-blue-800 text-white rounded font-bold text-sm";
-                initDriver();
-            } else {
-                btnO.className = "px-3 py-1 bg-white text-blue-600 rounded font-bold text-sm";
-                btnD.className = "px-3 py-1 bg-blue-800 text-white rounded font-bold text-sm";
-                initOperator();
+            // Toggle Logout Button
+            const logoutBtn = document.getElementById('btn-logout');
+            if(sectionId === 'login') logoutBtn.classList.add('hidden');
+            else logoutBtn.classList.remove('hidden');
+
+            // Reset Map if leaving monitor
+            if(sectionId !== 'admin-monitor' && map) {
+                // Optional: cleanup map listeners if needed
             }
         };
 
-        function log(msg) {
-            const consoleDiv = document.getElementById('console-log');
-            if(consoleDiv) consoleDiv.innerHTML += `> ${msg}<br>`;
-        }
+        window.logout = () => {
+            if(watchId) navigator.geolocation.clearWatch(watchId);
+            if(monitorInterval) clearInterval(monitorInterval);
+            currentMissionId = null;
+            showSection('login');
+        };
 
-        // --- LOGIC DRIVER ---
-        async function initDriver() {
-            if(currentMode !== 'driver') return;            
+        window.getCurrentLocation = (latInput, lngInput) => {
+            if (!navigator.geolocation) return alert("GPS tidak disokong");
+            navigator.geolocation.getCurrentPosition(pos => {
+                document.getElementById(latInput).value = pos.coords.latitude.toFixed(6);
+                document.getElementById(lngInput).value = pos.coords.longitude.toFixed(6);
+            }, err => alert("Gagal dapatkan lokasi: " + err.message));
+        };
+
+        // --- LOGIC ADMIN: CREATE MISSION ---
+        window.createMission = async (e) => {
+            e.preventDefault();            const id = document.getElementById('m-id').value.toUpperCase();
+            const driver = document.getElementById('m-driver').value;
+            const plate = document.getElementById('m-plate').value.toUpperCase();
+            const cargo = document.getElementById('m-cargo').value;
+            const notes = document.getElementById('m-notes').value;
+            const lat = parseFloat(document.getElementById('m-lat').value);
+            const lng = parseFloat(document.getElementById('m-lng').value);
+
+            const missionData = {
+                info: { driverName: driver, vehiclePlate: plate, cargoType: cargo, notes: notes },
+                destination: { name: "Destinasi Tetapan", targetLat: lat, targetLng: lng, radiusMeter: 100 },
+                tracking: { currentLat: 0, currentLng: 0, lastUpdated: Date.now(), speed: 0, battery: 100 },
+                status: { current: "pending", startedAt: null, arrivedAt: null, distanceRemaining: 999999 }
+            };
+
             try {
-                await signInAnonymously(auth);
-                log("Driver logged in.");
-            } catch(e) { console.error(e); }
-
-            if (!navigator.geolocation) {
-                document.getElementById('driver-status').innerText = "GPS Tidak Disokong!";
-                return;
+                await set(ref(db, `missions/${id}`), missionData);
+                alert(`Misi ${id} berjaya dicipta!`);
+                document.getElementById('form-create-mission').reset();
+                showSection('admin-dashboard');
+                loadAdminDashboard(); // Refresh list
+            } catch (error) {
+                alert("Ralat: " + error.message);
             }
+        };
 
-            navigator.geolocation.watchPosition(async (pos) => {
-                const lat = pos.coords.latitude;
-                const lng = pos.coords.longitude;
-                
-                // Kira Jarak
-                const dist = getDistanceFromLatLonInMeters(lat, lng, DEST_LAT, DEST_LNG);
-                const roundedDist = Math.round(dist);
+        // --- LOGIC ADMIN: DASHBOARD LIST ---
+        function loadAdminDashboard() {
+            const listContainer = document.getElementById('admin-mission-list');
+            listContainer.innerHTML = '<div class="col-span-full text-center py-10"><i class="fa-solid fa-circle-notch fa-spin"></i> Memuatkan...</div>';
 
-                // Update UI
-                document.getElementById('distance-display').innerText = roundedDist + " m";
-                
-                let status = "in_transit";
-                if (dist <= RADIUS_TIBA) {
-                    status = "arrived";
-                    document.getElementById('driver-status').innerText = "✅ TELAH SAMPAI!";
-                    document.getElementById('status-box').className = "p-4 bg-green-500 text-white rounded-lg mb-4 transition-colors duration-300";
-                    if(navigator.vibrate) navigator.vibrate([200, 100, 200]);
-                } else {
-                    document.getElementById('driver-status').innerText = "🚛 Dalam Perjalanan";
-                    document.getElementById('status-box').className = "p-4 bg-blue-500 text-white rounded-lg mb-4 transition-colors duration-300";
-                }
-
-                // Hantar ke Firebase
-                const updates = {
-                    [`missions/${MISSION_ID}/tracking/currentLat`]: lat,
-                    [`missions/${MISSION_ID}/tracking/currentLng`]: lng,
-                    [`missions/${MISSION_ID}/tracking/lastUpdated`]: Date.now(),
-                    [`missions/${MISSION_ID}/status/current`]: status,
-                    [`missions/${MISSION_ID}/status/distanceRemaining`]: roundedDist,
-                    [`missions/${MISSION_ID}/info/driverName`]: "Pemandu Live", // Set nama default
-                    [`missions/${MISSION_ID}/info/vehiclePlate`]: "ABC-1234",
-                    [`missions/${MISSION_ID}/destination/name`]: "KLCC Tower",
-                    [`missions/${MISSION_ID}/destination/targetLat`]: DEST_LAT,
-                    [`missions/${MISSION_ID}/destination/targetLng`]: DEST_LNG,
-                };
-                if(status === 'arrived') {
-                    updates[`missions/${MISSION_ID}/status/arrivedAt`] = new Date().toISOString();
-                }
-                await set(ref(db, `missions/${MISSION_ID}`), updates);
-                log(`Data sent: ${roundedDist}m`);
-
-            }, (err) => {
-                document.getElementById('driver-status').innerText = "Error GPS: " + err.message;
-            }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
-        }
-
-        // --- LOGIC OPERATOR ---
-        function initOperator() {
-            if(currentMode !== 'operator') return;
-
-            // Init Map jika belum
-            if (!map) {
-                map = L.map('map').setView([3.1390, 101.6869], 13);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap'
-                }).addTo(map);
-                
-                driverMarker = L.marker([3.1390, 101.6869]).addTo(map).bindPopup("Lokasi Driver");
-                destMarker = L.marker([DEST_LAT, DEST_LNG]).addTo(map).bindPopup("Destinasi (KLCC)");
-            }
-
-            // Listen Realtime
-            const missionRef = ref(db, `missions/${MISSION_ID}`);
-            onValue(missionRef, (snapshot) => {
+            const missionsRef = ref(db, 'missions');
+            onValue(missionsRef, (snapshot) => {
+                listContainer.innerHTML = '';
                 const data = snapshot.val();
+                
                 if (!data) {
-                    log("Menunggu data...");
+                    listContainer.innerHTML = '<div class="col-span-full text-center text-gray-500">Tiada misi aktif.</div>';
                     return;
                 }
 
-                // Update Info Card
-                document.getElementById('op-name').innerText = data.info?.driverName || "Unknown";
-                document.getElementById('op-plate').innerText = data.info?.vehiclePlate || "-";
-                const dist = data.status?.distanceRemaining || "?";
-                document.getElementById('op-distance').innerText = dist + " m";
-
-                // Update Badge Status
-                const badge = document.getElementById('op-status-badge');
-                if (data.status?.current === 'arrived') {
-                    badge.innerText = "SAMPAI ✅";
-                    badge.className = "px-2 py-1 bg-green-500 text-white text-xs rounded font-bold";
-                } else {
-                    badge.innerText = "BERGERAK 🚛";
-                    badge.className = "px-2 py-1 bg-blue-500 text-white text-xs rounded font-bold";
-                }
-
-                // Update Map
-                const lat = data.tracking?.currentLat;                const lng = data.tracking?.currentLng;
-                if (lat && lng) {
-                    const newLatLng = new L.LatLng(lat, lng);
-                    driverMarker.setLatLng(newLatLng);
-                    map.panTo(newLatLng);
-                    log(`Loc updated: ${lat}, ${lng}`);
-                }
+                Object.entries(data).forEach(([key, val]) => {
+                    const statusColor = val.status.current === 'arrived' ? 'bg-green-100 border-green-500' : 
+                                      val.status.current === 'pending' ? 'bg-gray-100 border-gray-400' : 'bg-blue-100 border-blue-500';
+                    const statusText = val.status.current === 'arrived' ? '✅ SAMPAI' : 
+                                     val.status.current === 'pending' ? '⏳ MENUNGGU' : '🚛 BERGERAK';
+                    
+                    const card = document.createElement('div');
+                    card.className = `${statusColor} border-l-4 p-4 rounded shadow bg-white cursor-pointer hover:shadow-lg transition`;
+                    card.onclick = () => openMonitor(key, val);                    card.innerHTML = `
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="font-bold text-lg">${key}</h3>
+                                <p class="text-sm text-gray-600">${val.info.driverName} (${val.info.vehiclePlate})</p>
+                            </div>
+                            <span class="text-xs font-bold px-2 py-1 rounded bg-white/50">${statusText}</span>
+                        </div>
+                        <div class="mt-2 text-xs text-gray-500">
+                            <i class="fa-solid fa-box"></i> ${val.info.cargoType}
+                        </div>
+                        <div class="mt-2 text-xs font-mono text-gray-400">
+                            Jarak: ${val.status.distanceRemaining > 900000 ? '-' : val.status.distanceRemaining + 'm'}
+                        </div>
+                    `;
+                    listContainer.appendChild(card);
+                });
             });
         }
 
-        // Helper: Haversine Formula
+        // --- LOGIC ADMIN: MONITOR LIVE MAP ---
+        window.openMonitor = (missionId, data) => {
+            currentMissionId = missionId;
+            showSection('admin-monitor');
+            
+            // Setup UI Info
+            document.getElementById('monitor-title').innerText = missionId;
+            document.getElementById('monitor-subtitle').innerText = `${data.info.driverName} - ${data.info.vehiclePlate}`;
+            document.getElementById('monitor-details').innerHTML = `
+                <li><strong>Kargo:</strong> ${data.info.cargoType}</li>
+                <li><strong>Nota:</strong> ${data.info.notes || '-'}</li>
+                <li><strong>Destinasi:</strong> Lat ${data.destination.targetLat}, Lng ${data.destination.targetLng}</li>
+            `;
+
+            // Init Map
+            if (!map) {
+                setTimeout(() => {
+                    map = L.map('map').setView([data.destination.targetLat, data.destination.targetLng], 13);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+                    
+                    // Marker Destinasi (Fixed)
+                    destMarker = L.marker([data.destination.targetLat, data.destination.targetLng], {
+                        icon: L.divIcon({html: '<i class="fa-solid fa-flag-checkered text-red-600 text-2xl"></i>', className: 'bg-transparent border-0', iconSize: [30, 30]})
+                    }).addTo(map).bindPopup("Destinasi");
+
+                    // Marker Driver (Dynamic)
+                    driverMarker = L.marker([0, 0]).addTo(map).bindPopup("Driver Lokasi");
+                }, 100);
+            } else {
+                map.invalidateSize();            }
+
+            // Realtime Listener
+            const missionRef = ref(db, `missions/${missionId}`);
+            onValue(missionRef, (snapshot) => {
+                const val = snapshot.val();
+                if(!val) return;
+
+                // Update Badges
+                const badge = document.getElementById('monitor-status-badge');
+                if(val.status.current === 'arrived') {
+                    badge.innerText = "SAMPAI ✅"; badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-green-500 text-white";
+                    document.getElementById('monitor-dist').innerText = "0m";
+                } else {
+                    badge.innerText = "LIVE 📡"; badge.className = "px-3 py-1 rounded-full text-xs font-bold bg-blue-500 text-white";
+                    document.getElementById('monitor-dist').innerText = (val.status.distanceRemaining || '?') + "m";
+                }
+                
+                document.getElementById('monitor-speed').innerText = (val.tracking.speed || 0) + " km/h";
+                document.getElementById('monitor-battery').innerText = (val.tracking.battery || '?') + "%";
+
+                // Update Map Position
+                if(val.tracking.currentLat && val.tracking.currentLng) {
+                    const newLatLng = [val.tracking.currentLat, val.tracking.currentLng];
+                    driverMarker.setLatLng(newLatLng);
+                    driverMarker.getPopup().setContent(`Last Update: ${new Date(val.tracking.lastUpdated).toLocaleTimeString()}`);
+                    
+                    // Pan map only if not arrived yet or user wants to follow
+                    if(val.status.current !== 'arrived') {
+                        // map.panTo(newLatLng); // Optional: Auto pan might be annoying
+                    }
+                }
+            });
+        };
+
+        // --- LOGIC DRIVER: LOGIN & TRACKING ---
+        window.driverLogin = async (e) => {
+            e.preventDefault();
+            const mId = document.getElementById('driver-mission-id').value.toUpperCase();
+            
+            // Check if mission exists
+            const snap = await onValue(ref(db, `missions/${mId}`), (snapshot) => {
+                if(snapshot.exists()) {
+                    startDriverTracking(mId, snapshot.val());
+                } else {
+                    alert("ID Misi tidak dijumpai! Sila semak dengan Admin.");
+                }
+            }, { onlyOnce: true });
+        };
+        function startDriverTracking(missionId, missionData) {
+            currentMissionId = missionId;
+            showSection('driver-active');
+            
+            document.getElementById('driver-mission-display').innerText = missionId;
+            document.getElementById('driver-dest-name').innerText = missionData.destination.name || "Destinasi Tidak Dinamakan";
+            document.getElementById('driver-dest-coords').innerText = `${missionData.destination.targetLat}, ${missionData.destination.targetLng}`;
+
+            const destLat = missionData.destination.targetLat;
+            const destLng = missionData.destination.targetLng;
+            const radius = missionData.destination.radiusMeter || 100;
+
+            if (!navigator.geolocation) {
+                alert("GPS diperlukan untuk fungsi ini.");
+                return;
+            }
+
+            watchId = navigator.geolocation.watchPosition(async (pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                const speed = (pos.coords.speed || 0) * 3.6; // m/s to km/h
+                const battery = navigator.getBattery ? (await navigator.getBattery()).level * 100 : 100;
+
+                // Kira Jarak
+                const dist = getDistanceFromLatLonInMeters(lat, lng, destLat, destLng);
+                const roundedDist = Math.round(dist);
+
+                // Logic Tiba
+                let status = "in_transit";
+                if (dist <= radius) status = "arrived";
+
+                // Update UI Driver
+                const statusCard = document.getElementById('driver-status-card');
+                const statusText = document.getElementById('driver-status-text');
+                const distBig = document.getElementById('driver-distance-big');
+                const connDot = document.getElementById('driver-connection-status');
+
+                distBig.innerText = roundedDist + "m";
+                connDot.className = "h-3 w-3 bg-green-500 rounded-full animate-pulse";
+
+                if (status === 'arrived') {
+                    statusCard.className = "bg-green-600 text-white p-6 rounded-xl shadow-lg text-center mb-4 transition-all duration-500";
+                    statusText.innerText = "✅ ANDA TELAH SAMPAI!";
+                    statusCard.querySelector('i').className = "fa-solid fa-check-circle text-4xl mb-3";
+                    if(navigator.vibrate) navigator.vibrate([500, 200, 500]);
+                } else {
+                    statusCard.className = "bg-blue-600 text-white p-6 rounded-xl shadow-lg text-center mb-4 transition-all duration-500";
+                    statusText.innerText = "DALAM PERJALANAN";
+                    statusCard.querySelector('i').className = "fa-solid fa-truck-moving text-4xl mb-3";
+                }
+                // Send to Firebase
+                const updates = {
+                    [`missions/${missionId}/tracking/currentLat`]: lat,
+                    [`missions/${missionId}/tracking/currentLng`]: lng,
+                    [`missions/${missionId}/tracking/lastUpdated`]: Date.now(),
+                    [`missions/${missionId}/tracking/speed`]: Math.round(speed),
+                    [`missions/${missionId}/tracking/battery`]: Math.round(battery),
+                    [`missions/${missionId}/status/current`]: status,
+                    [`missions/${missionId}/status/distanceRemaining`]: roundedDist,
+                };
+                if(status === 'arrived' && !missionData.status.arrivedAt) {
+                    updates[`missions/${missionId}/status/arrivedAt`] = new Date().toISOString();
+                }
+
+                await set(ref(db, `missions/${missionId}`), updates);
+
+            }, (err) => {
+                document.getElementById('driver-connection-status').className = "h-3 w-3 bg-red-500 rounded-full";
+                console.error(err);
+            }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+        }
+
+        window.forceArrival = async () => {
+            if(!currentMissionId) return;
+            if(confirm("Adakah anda pasti ingin menandakan misi ini sebagai SAMPAI?")) {
+                await update(ref(db, `missions/${currentMissionId}/status`), {
+                    current: 'arrived',
+                    arrivedAt: new Date().toISOString(),
+                    distanceRemaining: 0
+                });
+                alert("Status dikemaskini secara manual.");
+            }
+        };
+
+        // Helper Math
         function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
             var R = 6371e3; 
             var dLat = deg2rad(lat2-lat1);
             var dLon = deg2rad(lon2-lon1); 
-            var a = 
-                Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-                Math.sin(dLon/2) * Math.sin(dLon/2); 
+            var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+                    Math.sin(dLon/2) * Math.sin(dLon/2); 
             var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-            var d = R * c; 
-            return d;
+            return R * c;
         }
         function deg2rad(deg) { return deg * (Math.PI/180); }
 
-        // Auto start driver mode on load
-        switchMode('driver');
-
-    </script>
+        // Init
+        showSection('login');    </script>
 </body>
 </html>
