@@ -3,223 +3,259 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OpsTrack Intel - Live Tracking</title>
+    <title>OpsTrack Command | Intel System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { font-family: sans-serif; background-color: #f3f4f6; }
-        #map { height: 400px; width: 100%; border-radius: 12px; z-index: 1; }
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        #map { height: 100%; width: 100%; border-radius: 0; z-index: 1; }
         .hidden-view { display: none !important; }
-        .fade-in { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .fade-in { animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .status-dot {
+            height: 8px; width: 8px; border-radius: 50%; display: inline-block;
+            box-shadow: 0 0 8px currentColor;
+        }
+        .status-live { background-color: #10b981; color: #10b981; animation: pulse 2s infinite; }
+        .status-warn { background-color: #f59e0b; color: #f59e0b; }
+        .status-dead { background-color: #ef4444; color: #ef4444; }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
     </style>
 </head>
-<body class="text-slate-800">
+<body class="antialiased min-h-screen flex flex-col">
 
-    <!-- NAVBAR -->
-    <nav class="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-50">
-        <div class="max-w-4xl mx-auto flex justify-between items-center">
-            <h1 class="font-bold text-lg"><i class="fa-solid fa-radar text-blue-400"></i> OpsTrack</h1>
-            <button onclick="doLogout()" id="btn-logout" class="hidden text-xs bg-red-600 px-3 py-1 rounded">Keluar</button>
-        </div>
-    </nav>
-
-    <div class="max-w-4xl mx-auto p-4 pb-10">
-
-        <!-- 1. LANDING PAGE -->
-        <div id="view-landing" class="fade-in max-w-md mx-auto mt-10 text-center">
-            <div class="bg-white p-8 rounded-2xl shadow-xl">
-                <h2 class="text-2xl font-bold mb-2">Sistem Jejak Live</h2>
-                <p class="text-gray-500 text-sm mb-6">Pilih peranan anda</p>
-                
-                <button onclick="goTo('admin')" class="w-full bg-slate-800 text-white font-bold py-4 rounded-xl mb-3 shadow">
-                    <i class="fa-solid fa-user-tie"></i> ADMIN / OPERATOR
-                </button>
-                
-                <div class="my-4 text-gray-300 text-sm">ATAU</div>
-
-                <button onclick="goTo('driver-setup')" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow">
-                    <i class="fa-solid fa-location-dot"></i> DRIVER / JEJAK
-                </button>
-            </div>
-        </div>
-
-        <!-- 2. DRIVER SETUP -->
-        <div id="view-driver-setup" class="hidden-view fade-in max-w-md mx-auto mt-10">
-            <div class="bg-white p-6 rounded-2xl shadow-lg">                <h3 class="text-xl font-bold mb-4">Mula Sesi Baru</h3>
-                <input type="text" id="driver-name-input" placeholder="Nama / No Plat (cth: Van A1)" 
-                    class="w-full border-2 border-gray-200 p-3 rounded-lg mb-4 uppercase font-bold">
-                
-                <button onclick="startDriverSession()" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow">
-                    <i class="fa-solid fa-play"></i> MULAKAN GPS
-                </button>
-                <button onclick="goTo('landing')" class="w-full mt-2 text-gray-500 text-sm py-2">Batal</button>
-            </div>
-        </div>
-
-        <!-- 3. DRIVER ACTIVE -->
-        <div id="view-driver-active" class="hidden-view fade-in">
-            <div class="bg-blue-600 text-white p-6 rounded-2xl shadow-lg mb-4 text-center">
-                <h2 id="active-driver-name" class="text-2xl font-black">-</h2>
-                <p class="text-sm opacity-80 mt-1">Sedang menghantar lokasi...</p>
-                <div class="mt-4 text-4xl font-mono font-bold" id="tracking-timer">00:00</div>
-            </div>
-            
-            <div class="grid grid-cols-2 gap-4 mb-4">
-                <div class="bg-white p-4 rounded-xl shadow text-center">
-                    <div class="text-xs text-gray-500">JarakJangan risau, selalunya **bukan salah Firebase** kau. Kalau butang "keras" (tak boleh klik), 99% masalahnya ada pada **Kod JavaScript** yang gagal "load", bukan database yang rosak.
-
-Ini cara paling cepat untuk **CHECK & BAiki** tanpa perlu jadi pakar:
-
-### 🔍 Langkah 1: Cara "Diagnose" Error (Penting!)
-Sebelum kita tukar apa-apa, kita kena tahu *kenapa* ia error.
-1.  Buka link Vercel kau di browser phone (Chrome/Safari).
-2.  **Untuk Android (Chrome):**
-    *   Tekan tiga titik di bucu kanan atas > Pilih **"Desktop site"** (Laman Desktop).
-    *   Tekan lama di mana-mana ruang kosong > Pilih **"Inspect"** (atau "Semak").
-    *   Satu tetingkap kod akan muncul. Cari tab **"Console"**.
-3.  **Untuk iPhone (Safari):**
-    *   Pergi ke Settings > Safari > Advanced > Aktifkan **"Web Inspector"**.
-    *   Sambung phone ke PC/Mac (kalau ada) untuk inspect, ATAU cuba lihat jika ada popup error di screen.
-    *   *Alternatif mudah:* Cuba buka link di browser lain atau mode "Incognito".
-
-**Apa yang perlu kau cari di Console?**
-Kalau ada tulisan berwarna **MERAH**, itu puncanya.
-*   Jika tulis `SyntaxError`: Ada kod yang salah eja/tanda baca.
-*   Jika tulis `FirebaseError`: Masalah connection ke database.
-*   Jika tulis `app is not defined`: Masalah fungsi butang (ini paling biasa).
-
----
-
-### 🛠️ Langkah 2: Kod "Anti-Error" (Versi Paling Stabil)
-Saya telah semak semula kod tadi. Ada satu bahagian kecil yang mungkin menyebabkan konflik pada sesetengah browser phone (`window.app` assignment).
-
-Saya berikan versi **PALING MUDAH & TAAT ATURAN**. Kod ini saya tulis supaya:
-1.  Tidak bergantung pada `window.app` yang kompleks.2.  Fungsi dipanggil secara langsung (Direct Function Call).
-3.  Error handling lebih baik (ada `try-catch`).
-
-**Sila REPLACE SEMUA isi `index.html` dengan kod ini:**
-
-```html
-<!DOCTYPE html>
-<html lang="ms">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OpsTrack Intel - Live Tracking</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body { font-family: sans-serif; background-color: #f3f4f6; }
-        #map { height: 400px; width: 100%; border-radius: 12px; z-index: 1; }
-        .hidden-view { display: none !important; }
-        .fade-in { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    </style>
-</head>
-<body class="text-slate-800">
-
-    <!-- NAVBAR -->
-    <nav class="bg-slate-900 text-white p-4 shadow-md sticky top-0 z-50">
-        <div class="max-w-4xl mx-auto flex justify-between items-center">
-            <h1 class="font-bold text-lg"><i class="fa-solid fa-radar text-blue-400"></i> OpsTrack</h1>
-            <button onclick="doLogout()" id="btn-logout" class="hidden text-xs bg-red-600 px-3 py-1 rounded">Keluar</button>
-        </div>
-    </nav>
-
-    <div class="max-w-4xl mx-auto p-4 pb-10">
-
-        <!-- 1. LANDING PAGE -->
-        <div id="view-landing" class="fade-in max-w-md mx-auto mt-10 text-center">
-            <div class="bg-white p-8 rounded-2xl shadow-xl">
-                <h2 class="text-2xl font-bold mb-2">Sistem Jejak Live</h2>
-                <p class="text-gray-500 text-sm mb-6">Pilih peranan anda</p>
-                
-                <button onclick="goTo('admin')" class="w-full bg-slate-800 text-white font-bold py-4 rounded-xl mb-3 shadow">
-                    <i class="fa-solid fa-user-tie"></i> ADMIN / OPERATOR
-                </button>
-                
-                <div class="my-4 text-gray-300 text-sm">ATAU</div>
-
-                <button onclick="goTo('driver-setup')" class="w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow">
-                    <i class="fa-solid fa-location-dot"></i> DRIVER / JEJAK
-                </button>            </div>
-        </div>
-
-        <!-- 2. DRIVER SETUP -->
-        <div id="view-driver-setup" class="hidden-view fade-in max-w-md mx-auto mt-10">
-            <div class="bg-white p-6 rounded-2xl shadow-lg">
-                <h3 class="text-xl font-bold mb-4">Mula Sesi Baru</h3>
-                <input type="text" id="driver-name-input" placeholder="Nama / No Plat (cth: Van A1)" 
-                    class="w-full border-2 border-gray-200 p-3 rounded-lg mb-4 uppercase font-bold">
-                
-                <button onclick="startDriverSession()" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg shadow">
-                    <i class="fa-solid fa-play"></i> MULAKAN GPS
-                </button>
-                <button onclick="goTo('landing')" class="w-full mt-2 text-gray-500 text-sm py-2">Batal</button>
-            </div>
-        </div>
-
-        <!-- 3. DRIVER ACTIVE -->
-        <div id="view-driver-active" class="hidden-view fade-in">
-            <div class="bg-blue-600 text-white p-6 rounded-2xl shadow-lg mb-4 text-center">
-                <h2 id="active-driver-name" class="text-2xl font-black">-</h2>
-                <p class="text-sm opacity-80 mt-1">Sedang menghantar lokasi...</p>
-                <div class="mt-4 text-4xl font-mono font-bold" id="tracking-timer">00:00</div>
-            </div>
-            
-            <div class="grid grid-cols-2 gap-4 mb-4">
-                <div class="bg-white p-4 rounded-xl shadow text-center">
-                    <div class="text-xs text-gray-500">Jarak</div>
-                    <div class="font-bold text-lg" id="driver-dist">0 km</div>
+    <!-- HEADER -->    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white font-bold">
+                    <i class="fa-solid fa-satellite-dish"></i>
                 </div>
-                <div class="bg-white p-4 rounded-xl shadow text-center">
-                    <div class="text-xs text-gray-500">Laju</div>
-                    <div class="font-bold text-lg" id="driver-speed">0 km/h</div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-tight text-white">OpsTrack <span class="text-blue-400">COMMAND</span></h1>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-widest">Real-time Geospatial Intelligence</p>
                 </div>
             </div>
-
-            <button onclick="stopDriverSession()" class="w-full bg-red-100 text-red-600 font-bold py-3 rounded-xl">
-                <i class="fa-solid fa-stop"></i> TAMAT SESI
+            <button onclick="app.logout()" id="btn-logout" class="hidden text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/50 px-3 py-1.5 rounded transition">
+                <i class="fa-solid fa-power-off mr-1"></i> TERMINATE
             </button>
         </div>
+    </header>
 
-        <!-- 4. ADMIN DASHBOARD -->
-        <div id="view-admin" class="hidden-view fade-in">
-            <h2 class="text-2xl font-bold mb-4">Dashboard Operator</h2>
-            <div id="admin-unit-list" class="space-y-3">
-                <div class="text-center text-gray-400 py-10">Memuatkan data...</div>
-            </div>
+    <main class="flex-1 max-w-6xl mx-auto w-full p-4 md:p-6 relative">
 
-            <!-- Map Panel (Hidden by default) -->
-            <div id="admin-map-panel" class="hidden-view fixed inset-0 bg-white z-50 flex flex-col">                <div class="bg-slate-900 text-white p-4 flex justify-between items-center shadow-lg">
-                    <h3 class="font-bold" id="map-unit-title">Monitoring</h3>
-                    <button onclick="closeMap()" class="text-white text-xl"><i class="fa-solid fa-times"></i> Tutup</button>
+        <!-- 1. LANDING / ROLE SELECT -->
+        <div id="view-landing" class="fade-in max-w-lg mx-auto mt-10 md:mt-20">
+            <div class="glass-panel p-8 rounded-2xl shadow-2xl text-center relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
+                
+                <div class="mb-8">
+                    <i class="fa-solid fa-globe text-5xl text-blue-500 mb-4 drop-shadow-lg"></i>
+                    <h2 class="text-2xl font-bold text-white">Sistem Pemantauan Strategik</h2>
+                    <p class="text-slate-400 text-sm mt-2">Pilih protokol akses untuk meneruskan operasi.</p>
                 </div>
-                <div class="flex-1 relative">
-                    <div id="map" class="absolute inset-0"></div>
-                </div>
-                <div class="p-4 bg-gray-50 border-t">
-                    <div class="grid grid-cols-3 gap-2 text-center text-xs">
-                        <div><div class="text-gray-500">Mula</div><div class="font-bold" id="stat-start">-</div></div>
-                        <div><div class="text-gray-500">Tempoh</div><div class="font-bold" id="stat-duration">-</div></div>
-                        <div><div class="text-gray-500">Checkpoint</div><div class="font-bold" id="stat-points">0</div></div>
+                
+                <div class="space-y-4">
+                    <button onclick="app.nav('admin')" class="group w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-between shadow-lg hover:shadow-blue-500/10">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center text-blue-400 group-hover:text-blue-300">
+                                <i class="fa-solid fa-user-shield"></i>
+                            </div>
+                            <span class="text-left">
+                                <div class="font-bold">Pusat Kawalan (Admin)</div>
+                                <div class="text-xs text-slate-400 font-normal">Pemantauan & Analitik Data</div>
+                            </span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-slate-600 group-hover:text-white transition"></i>
+                    </button>
+                    
+                    <div class="relative flex py-2 items-center">
+                        <div class="flex-grow border-t border-slate-700"></div>
+                        <span class="flex-shrink mx-4 text-slate-500 text-xs uppercase">Protokol Alternatif</span>
+                        <div class="flex-grow border-t border-slate-700"></div>
                     </div>
+                    <button onclick="app.nav('driver-setup')" class="group w-full bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-between shadow-lg hover:shadow-blue-500/25">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded bg-white/20 flex items-center justify-center text-white">
+                                <i class="fa-solid fa-location-crosshairs"></i>
+                            </div>
+                            <span class="text-left">
+                                <div class="font-bold">Unit Bergerak (Driver)</div>
+                                <div class="text-xs text-blue-100 font-normal">Aktifkan Jejak GPS Live</div>
+                            </span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-blue-300 group-hover:text-white transition"></i>
+                    </button>
                 </div>
             </div>
         </div>
 
-    </div>
+        <!-- 2. DRIVER SETUP -->
+        <div id="view-driver-setup" class="hidden-view fade-in max-w-md mx-auto mt-10">
+            <div class="glass-panel p-6 rounded-2xl shadow-xl border-t-4 border-blue-500">
+                <h3 class="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-id-card-clip text-blue-400"></i> Pengesahan Identiti
+                </h3>
+                <p class="text-slate-400 text-sm mb-6">Masukkan identiti unit untuk memulakan telemetri data.</p>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 uppercase mb-1">ID Unit / Nama Pemandu</label>
+                        <input type="text" id="driver-name-input" placeholder="cth: ALPHA-01 / Ali" 
+                            class="w-full bg-slate-900/50 border border-slate-700 text-white p-3 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-mono uppercase transition">
+                    </div>
+                    
+                    <div class="bg-blue-900/20 border border-blue-500/30 p-3 rounded-lg flex gap-3 items-start">
+                        <i class="fa-solid fa-circle-info text-blue-400 mt-1"></i>
+                        <p class="text-xs text-blue-200">Sistem memerlukan akses GPS berketepatan tinggi. Sila pastikan perkhidmatan lokasi dihidupkan.</p>
+                    </div>
 
-    <!-- FIREBASE LOGIC -->
+                    <button onclick="app.initDriver()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-play"></i> MULAKAN TELEMETRI
+                    </button>
+                    <button onclick="app.nav('landing')" class="w-full text-slate-500 hover:text-slate-300 text-sm py-2">Batal & Kembali</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. DRIVER ACTIVE DASHBOARD -->
+        <div id="view-driver-active" class="hidden-view fade-in h-full flex flex-col">
+            <!-- Status Header -->
+            <div class="glass-panel p-4 rounded-xl mb-4 flex justify-between items-center border-l-4 border-green-500">
+                <div>
+                    <h2 id="active-driver-name" class="text-lg font-bold text-white font-mono">-</h2>                    <div class="flex items-center gap-2 mt-1">
+                        <span class="status-dot status-live"></span>
+                        <span class="text-xs text-green-400 font-mono">TRANSMITTING LIVE</span>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs text-slate-400">Masa Sesi</div>
+                    <div id="tracking-timer" class="text-xl font-mono font-bold text-white">00:00:00</div>
+                </div>
+            </div>
+
+            <!-- Metrics Grid -->
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div class="glass-panel p-4 rounded-xl border border-slate-700/50">
+                    <div class="text-xs text-slate-400 uppercase mb-1">Jarak Dilalui</div>
+                    <div class="text-2xl font-mono font-bold text-white"><span id="driver-dist">0.00</span> <span class="text-sm text-slate-500">km</span></div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-700/50">
+                    <div class="text-xs text-slate-400 uppercase mb-1">Kelajuan Semasa</div>
+                    <div class="text-2xl font-mono font-bold text-blue-400"><span id="driver-speed">0</span> <span class="text-sm text-slate-500">km/h</span></div>
+                </div>
+            </div>
+
+            <!-- Map Preview (Small) -->
+            <div class="flex-1 glass-panel rounded-xl overflow-hidden relative mb-4 border border-slate-700/50 min-h-[200px]">
+                <div id="map-mini" class="absolute inset-0 bg-slate-800"></div>
+                <div class="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded font-mono">
+                    LIVE PREVIEW
+                </div>
+            </div>
+
+            <button onclick="app.stopDriver()" class="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/50 text-red-400 font-bold py-4 rounded-xl transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-stop"></i> TAMATKAN SESI & PUTUS SAMBUNGAN
+            </button>
+            
+            <!-- Error Alert Box (Hidden by default) -->
+            <div id="gps-error-box" class="hidden mt-4 bg-red-900/20 border border-red-500/50 p-4 rounded-xl">
+                <h4 class="text-red-400 font-bold text-sm mb-1"><i class="fa-solid fa-triangle-exclamation"></i> Amaran Sistem</h4>
+                <p class="text-xs text-red-200" id="gps-error-msg">Tidak dapat mengakses GPS.</p>
+                <button onclick="app.retryGPS()" class="mt-2 text-xs bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Cuba Semula</button>
+            </div>
+        </div>
+
+        <!-- 4. ADMIN COMMAND CENTER -->
+        <div id="view-admin" class="hidden-view fade-in h-full flex flex-col">
+            <div class="flex justify-between items-end mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-white">Papan Pemuka Operasi</h2>
+                    <p class="text-slate-400 text-xs font-mono mt-1">MONITORING ALL ACTIVE UNITS // REAL-TIME DATA STREAM</p>
+                </div>                <button onclick="app.loadAdminData()" class="text-blue-400 hover:text-blue-300 text-xs font-mono border border-blue-500/30 px-3 py-1.5 rounded hover:bg-blue-500/10 transition">
+                    <i class="fa-solid fa-rotate"></i> SEGARKAN DATA
+                </button>
+            </div>
+
+            <!-- Units List -->
+            <div id="admin-unit-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 overflow-y-auto max-h-[60vh] pb-4">
+                <div class="col-span-full text-center py-12 glass-panel rounded-xl border border-slate-700/50">
+                    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-blue-500 mb-3"></i>
+                    <p class="text-slate-400 text-sm">Mengimbas rangkaian untuk unit aktif...</p>
+                </div>
+            </div>
+
+            <!-- Full Screen Map Overlay (Hidden initially) -->
+            <div id="admin-map-overlay" class="hidden-view fixed inset-0 z-[60] bg-slate-900 flex flex-col">
+                <div class="bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center shadow-lg">
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                        <h3 class="font-bold text-white font-mono" id="map-unit-title">UNIT ID: -</h3>
+                    </div>
+                    <button onclick="app.closeMap()" class="text-slate-400 hover:text-white transition">
+                        <i class="fa-solid fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="flex-1 relative bg-slate-900">
+                    <div id="map-full" class="absolute inset-0"></div>
+                    
+                    <!-- Floating Stats Card -->
+                    <div class="absolute top-4 left-4 glass-panel p-3 rounded-lg shadow-xl border border-slate-700/50 max-w-xs">
+                        <h4 class="text-xs font-bold text-slate-300 uppercase mb-2 border-b border-slate-700 pb-1">Analitik Misi</h4>
+                        <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+                            <div>
+                                <span class="block text-slate-500">Mula Sesi</span>
+                                <span class="text-white" id="stat-start">--:--</span>
+                            </div>
+                            <div>
+                                <span class="block text-slate-500">Tempoh</span>
+                                <span class="text-white" id="stat-duration">0 min</span>
+                            </div>
+                            <div>
+                                <span class="block text-slate-500">Checkpoint</span>
+                                <span class="text-blue-400 font-bold" id="stat-points">0</span>
+                            </div>
+                            <div>
+                                <span class="block text-slate-500">Jarak</span>
+                                <span class="text-white" id="stat-dist">0 km</span>
+                            </div>
+                        </div>
+                    </div>                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FIREBASE & LOGIC CORE -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, update, onValue, query, orderByChild } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, update, onValue, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-        // --- CONFIG ---
+        // --- CONFIGURATION ---
         const firebaseConfig = {
             apiKey: "AIzaSyABchyom-zF_ZWuV7HWiDLWBaopBQ1TYxk",
             authDomain: "ops-track-system.firebaseapp.com",
@@ -230,215 +266,337 @@ Saya berikan versi **PALING MUDAH & TAAT ATURAN**. Kod ini saya tulis supaya:
             appId: "1:706189064777:web:03f71ed77e5c3e1f265d98"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-        const auth = getAuth(app);
+        const appFB = initializeApp(firebaseConfig);
+        const db = getDatabase(appFB);
+        const auth = getAuth(appFB);
 
-        let currentSessionId = null;
-        let watchId = null;
-        let timerInt = null;
-        let startTime = 0;
-        let mapObj = null;
-        let pathLine = null;
-        let marker = null;
-        let pathCoords = [];
-
-        // --- GLOBAL FUNCTIONS (Attached to window) ---        
-        window.goTo = (view) => {
-            document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden-view'));
-            document.getElementById(`view-${view}`).classList.remove('hidden-view');
-            document.getElementById('btn-logout').classList.toggle('hidden', view === 'landing');
-            
-            if(view === 'admin') loadAdminList();
+        // --- STATE MANAGEMENT ---
+        let state = {
+            sessionId: null,
+            watchId: null,
+            timerInt: null,
+            startTime: 0,
+            totalDist: 0,
+            lastPos: null,
+            mapMini: null,
+            mapFull: null,
+            pathLine: null,
+            marker: null,
+            pathCoords: []
         };
 
-        window.doLogout = () => {
-            if(watchId) navigator.geolocation.clearWatch(watchId);
-            if(timerInt) clearInterval(timerInt);
-            currentSessionId = null;
-            window.goTo('landing');
-        };
+        // --- APP CONTROLLER ---
+        const app = {
+            nav: (view) => {
+                document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden-view'));
+                document.getElementById(`view-${view}`).classList.remove('hidden-view');
+                
+                const logoutBtn = document.getElementById('btn-logout');
+                if(view === 'landing') logoutBtn.classList.add('hidden');                else logoutBtn.classList.remove('hidden');
 
-        window.startDriverSession = async () => {
-            const name = document.getElementById('driver-name-input').value.toUpperCase().trim();
-            if(!name) return alert("Sila masukkan nama!");
+                if(view === 'admin') app.loadAdminData();
+                if(view === 'driver-active' && !state.mapMini) app.initMiniMap();
+            },
 
-            try {
-                await signInAnonymously(auth);
-                currentSessionId = 'sess_' + Date.now();
-                startTime = Date.now();
-
-                // Init DB
-                await set(ref(db, `sessions/${currentSessionId}`), {
-                    name: name,
-                    status: 'active',
-                    startTime: startTime,
-                    lastUpdate: Date.now(),
-                    distance: 0,
-                    speed: 0,
-                    path: {}
-                });
-
-                document.getElementById('active-driver-name').innerText = name;
-                window.goTo('driver-active');
-                startTrackingLogic(currentSessionId);
-            } catch (e) {
-                alert("Error Login: " + e.message);
-                console.error(e);
-            }
-        };
-
-        function startTrackingLogic(id) {
-            let totalDist = 0;
-            let lastPos = null;
-            let seconds = 0;
-            // Timer
-            timerInt = setInterval(() => {
-                seconds++;
-                const m = Math.floor(seconds/60).toString().padStart(2,'0');
-                const s = (seconds%60).toString().padStart(2,'0');
-                document.getElementById('tracking-timer').innerText = `${m}:${s}`;
-            }, 1000);
-
-            // GPS
-            if(!navigator.geolocation) return alert("GPS tidak sokong");
-            
-            watchId = navigator.geolocation.watchPosition(async (pos) => {
-                const lat = pos.coords.latitude;
-                const lng = pos.coords.longitude;
-                const spd = (pos.coords.speed || 0) * 3.6;
-                const now = Date.now();
-
-                // Calc Dist
-                if(lastPos) {
-                    const d = getDist(lastPos.lat, lastPos.lng, lat, lng);
-                    totalDist += d;
+            logout: () => {
+                if(state.watchId) navigator.geolocation.clearWatch(state.watchId);
+                if(state.timerInt) clearInterval(state.timerInt);
+                if(state.sessionId) {
+                    update(ref(db, `sessions/${state.sessionId}`), { status: 'terminated' });
                 }
-                lastPos = {lat, lng};
+                state.sessionId = null;
+                app.nav('landing');
+            },
 
-                // Save Checkpoint
-                const updates = {
-                    [`sessions/${id}/lastUpdate`]: now,
-                    [`sessions/${id}/speed`]: Math.round(spd),
-                    [`sessions/${id}/distance`]: parseFloat(totalDist.toFixed(2)),
-                    [`sessions/${id}/path/${now}`]: { lat, lng, s: Math.round(spd) }
-                };
+            // --- DRIVER LOGIC ---
+            initDriver: async () => {
+                const name = document.getElementById('driver-name-input').value.toUpperCase().trim();
+                if(!name) return alert("Sila masukkan ID Unit!");
 
-                await update(ref(db, `sessions/${id}`), updates);
+                try {
+                    await signInAnonymously(auth);
+                    state.sessionId = 'unit_' + Date.now();
+                    state.startTime = Date.now();
+                    state.totalDist = 0;
+                    state.lastPos = null;
 
-                // UI Update
-                document.getElementById('driver-dist').innerText = totalDist.toFixed(2) + " km";
-                document.getElementById('driver-speed').innerText = Math.round(spd) + " km/h";
+                    // Create Session in DB
+                    await set(ref(db, `sessions/${state.sessionId}`), {
+                        name: name,
+                        status: 'active',
+                        startTime: state.startTime,
+                        lastUpdate: Date.now(),
+                        distance: 0,
+                        speed: 0,
+                        path: {}
+                    });
 
-            }, (err) => console.error(err), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
-        }
+                    document.getElementById('active-driver-name').innerText = name;
+                    document.getElementById('gps-error-box').classList.add('hidden');
+                    app.nav('driver-active');
+                    app.startTelemetry();
 
-        window.stopDriverSession = async () => {
-            if(!confirm("Tamat sesi?")) return;
-            if(watchId) navigator.geolocation.clearWatch(watchId);
-            if(timerInt) clearInterval(timerInt);
-            
-            await update(ref(db, `sessions/${currentSessionId}`), { status: 'completed' });
-            currentSessionId = null;
-            window.goTo('landing');
-        };
-        function loadAdminList() {
-            const listEl = document.getElementById('admin-unit-list');
-            listEl.innerHTML = '<div class="text-center py-4">Loading...</div>';
+                } catch (e) {
+                    console.error("Auth Error:", e);
+                    alert("Ralat Sistem: " + e.message);
+                }
+            },
+            startTelemetry: () => {
+                let seconds = 0;
+                
+                // Timer UI
+                state.timerInt = setInterval(() => {
+                    seconds++;
+                    const h = Math.floor(seconds/3600).toString().padStart(2,'0');
+                    const m = Math.floor((seconds%3600)/60).toString().padStart(2,'0');
+                    const s = (seconds%60).toString().padStart(2,'0');
+                    document.getElementById('tracking-timer').innerText = `${h}:${m}:${s}`;
+                }, 1000);
 
-            onValue(ref(db, 'sessions'), (snap) => {
-                listEl.innerHTML = '';
-                const data = snap.val();
-                if(!data) {
-                    listEl.innerHTML = '<div class="text-center text-gray-400">Tiada unit aktif.</div>';
+                // GPS Logic with Robust Error Handling
+                if(!navigator.geolocation) {
+                    app.showGPSError("Peranti ini tidak menyokong GPS.");
                     return;
                 }
 
-                Object.entries(data).forEach(([key, val]) => {
-                    if(val.status === 'completed') return;
+                state.watchId = navigator.geolocation.watchPosition(
+                    async (pos) => {
+                        // Success Callback
+                        document.getElementById('gps-error-box').classList.add('hidden');
+                        
+                        const lat = pos.coords.latitude;
+                        const lng = pos.coords.longitude;
+                        const spd = (pos.coords.speed || 0) * 3.6; // m/s to km/h
+                        const now = Date.now();
+
+                        // Calc Distance
+                        if(state.lastPos) {
+                            state.totalDist += app.getDist(state.lastPos.lat, state.lastPos.lng, lat, lng);
+                        }
+                        state.lastPos = {lat, lng};
+
+                        // Prepare Data
+                        const updates = {
+                            [`sessions/${state.sessionId}/lastUpdate`]: now,
+                            [`sessions/${state.sessionId}/speed`]: Math.round(spd),
+                            [`sessions/${state.sessionId}/distance`]: parseFloat(state.totalDist.toFixed(2)),
+                            [`sessions/${state.sessionId}/path/${now}`]: { lat, lng, s: Math.round(spd) }
+                        };
+
+                        // Update DB
+                        try {
+                            await update(ref(db, `sessions/${state.sessionId}`), updates);
+                            
+                            // Update UI
+                            document.getElementById('driver-dist').innerText = state.totalDist.toFixed(2);
+                            document.getElementById('driver-speed').innerText = Math.round(spd);
+                                                        // Update Mini Map if exists
+                            if(state.mapMini) {
+                                app.updateMapPosition(state.mapMini, lat, lng);
+                            }
+
+                        } catch (err) {
+                            console.error("DB Write Error:", err);
+                            // If permission denied in DB rules, show specific error
+                            if(err.code === 'PERMISSION_DENIED') {
+                                app.showGPSError("Akses Database Ditolak. Semak Firebase Rules.");
+                            }
+                        }
+                    },
+                    (err) => {
+                        // Error Callback
+                        console.warn("GPS Error:", err);
+                        let msg = "Gagal mendapatkan lokasi GPS.";
+                        if(err.code === 1) msg = "AKSES DITOLAK: Sila benarkan lokasi di setting browser/peranti anda.";
+                        if(err.code === 2) msg = "Lokasi Tidak Tersedia: Signal lemah atau GPS dimatikan.";
+                        if(err.code === 3) msg = "Timeout: Terlalu lama mendapatkan signal.";
+                        
+                        app.showGPSError(msg);
+                    },
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                );
+            },
+
+            showGPSError: (msg) => {
+                const box = document.getElementById('gps-error-box');
+                const txt = document.getElementById('gps-error-msg');
+                txt.innerText = msg;
+                box.classList.remove('hidden');
+            },
+
+            retryGPS: () => {
+                if(state.watchId) navigator.geolocation.clearWatch(state.watchId);
+                app.startTelemetry();
+            },
+
+            stopDriver: async () => {
+                if(!confirm("Adakah anda pasti ingin menamatkan sesi?")) return;
+                if(state.watchId) navigator.geolocation.clearWatch(state.watchId);
+                if(state.timerInt) clearInterval(state.timerInt);
+                
+                await update(ref(db, `sessions/${state.sessionId}`), { status: 'completed', endTime: Date.now() });
+                state.sessionId = null;
+                app.nav('landing');
+            },
+
+            initMiniMap: () => {                if(state.mapMini) return;
+                setTimeout(() => {
+                    state.mapMini = L.map('map-mini').setView([3.1390, 101.6869], 13);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '',
+                        zoomControl: false,
+                        dragging: false,
+                        scrollWheelZoom: false
+                    }).addTo(state.mapMini);
+                }, 500);
+            },
+
+            updateMapPosition: (map, lat, lng) => {
+                if(!map._loaded) return;
+                if(state.markerMini) map.removeLayer(state.markerMini);
+                state.markerMini = L.marker([lat, lng]).addTo(map);
+                map.setView([lat, lng], 15);
+            },
+
+            // --- ADMIN LOGIC ---
+            loadAdminData: () => {
+                const listEl = document.getElementById('admin-unit-list');
+                listEl.innerHTML = '<div class="col-span-full text-center py-12 glass-panel rounded-xl"><i class="fa-solid fa-circle-notch fa-spin text-blue-500 text-2xl mb-2"></i><p class="text-slate-400 text-sm">Scanning Network...</p></div>';
+
+                onValue(ref(db, 'sessions'), (snapshot) => {
+                    listEl.innerHTML = '';
+                    const data = snapshot.val();
                     
-                    const isOld = (Date.now() - val.lastUpdate) > 60000;
-                    const card = document.createElement('div');
-                    card.className = `p-4 bg-white rounded-lg shadow border-l-4 cursor-pointer ${isOld ? 'border-red-500' : 'border-green-500'}`;
-                    card.onclick = () => openMap(key, val);
-                    card.innerHTML = `
-                        <div class="flex justify-between">
-                            <span class="font-bold text-lg">${val.name}</span>
-                            <span class="text-xs ${isOld?'text-red-500':'text-green-500'} font-bold">${isOld?'LAGI':'LIVE'}</span>
-                        </div>
-                        <div class="text-xs text-gray-500 mt-1">Jarak: ${val.distance}km | Laju: ${val.speed}km/h</div>
-                    `;
-                    listEl.appendChild(card);
-                });
-            });
-        }
+                    if(!data) {
+                        listEl.innerHTML = '<div class="col-span-full text-center py-12 glass-panel rounded-xl border border-slate-800"><p class="text-slate-500 text-sm">Tiada unit aktif dikesan dalam rangkaian.</p></div>';
+                        return;
+                    }
 
-        window.openMap = (id, data) => {
-            document.getElementById('admin-map-panel').classList.remove('hidden-view');
-            document.getElementById('map-unit-title').innerText = data.name;
-            
-            // Stats
-            document.getElementById('stat-start').innerText = new Date(data.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            document.getElementById('stat-duration').innerText = Math.floor((Date.now()-data.startTime)/60000) + " min";
-            
-            // Init Map
-            setTimeout(() => {
-                if(!mapObj) {
-                    mapObj = L.map('map').setView([3.1390, 101.6869], 13);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapObj);
-                } else {
-                    mapObj.invalidateSize();
-                }
+                    let hasActive = false;
+                    Object.entries(data).forEach(([key, val]) => {
+                        if(val.status === 'completed' || val.status === 'terminated') return;
+                        hasActive = true;
 
-                if(pathLine) mapObj.removeLayer(pathLine);                if(marker) mapObj.removeLayer(marker);
-                pathCoords = [];
+                        const isLagging = (Date.now() - val.lastUpdate) > 60000; // > 1 min
+                        const statusClass = isLagging ? 'border-yellow-500/50 bg-yellow-900/10' : 'border-green-500/50 bg-green-900/10';
+                        const dotClass = isLagging ? 'status-warn' : 'status-live';
+                        const timeAgo = Math.floor((Date.now() - val.lastUpdate)/1000) + 's';
 
-                // Load Path
-                if(data.path) {
-                    const keys = Object.keys(data.path).sort();
-                    document.getElementById('stat-points').innerText = keys.length;
-                    
-                    keys.forEach(k => {
-                        const p = data.path[k];
-                        pathCoords.push([p.lat, p.lng]);
+                        const card = document.createElement('div');
+                        card.className = `${statusClass} border-l-4 p-4 rounded-xl cursor-pointer hover:bg-slate-800 transition shadow-lg backdrop-blur-sm`;
+                        card.onclick = () => app.openFullMap(key, val);
+                        
+                        card.innerHTML = `
+                            <div class="flex justify-between items-start mb-2">
+                                <div>                                    <h4 class="font-bold text-white text-lg font-mono">${val.name}</h4>
+                                    <div class="text-[10px] text-slate-400 font-mono">ID: ${key.substr(-8)}</div>
+                                </div>
+                                <div class="text-right">
+                                    <span class={`status-dot ${dotClass}`}></span>
+                                    <div class="text-[10px] text-slate-400 mt-1">${timeAgo}</div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-xs font-mono text-slate-300">
+                                <div class="bg-slate-900/50 p-2 rounded">
+                                    <span class="block text-[10px] text-slate-500">DISTANCE</span>
+                                    <span class="font-bold">${val.distance || 0} km</span>
+                                </div>
+                                <div class="bg-slate-900/50 p-2 rounded">
+                                    <span class="block text-[10px] text-slate-500">SPEED</span>
+                                    <span class="font-bold">${val.speed || 0} km/h</span>
+                                </div>
+                            </div>
+                        `;
+                        listEl.appendChild(card);
                     });
 
-                    if(pathCoords.length > 0) {
-                        pathLine = L.polyline(pathCoords, {color: 'blue', weight: 5}).addTo(mapObj);
-                        marker = L.marker(pathCoords[pathCoords.length-1]).addTo(mapObj).bindPopup("Lokasi Terkini").openPopup();
-                        mapObj.fitBounds(pathLine.getBounds());
+                    if(!hasActive) {
+                        listEl.innerHTML = '<div class="col-span-full text-center py-12 glass-panel rounded-xl border border-slate-800"><i class="fa-solid fa-radar text-slate-600 text-3xl mb-3"></i><p class="text-slate-500 text-sm">Tiada unit aktif sedang bergerak.</p></div>';
                     }
-                }
-
-                // Realtime Listener
-                onValue(ref(db, `sessions/${id}`), (s) => {
-                    const v = s.val();
-                    if(!v || !v.path) return;
-                    const ks = Object.keys(v.path).sort();
-                    const newCoords = ks.map(k => [v.path[k].lat, v.path[k].lng]);
-                    
-                    if(pathLine) pathLine.setLatLngs(newCoords);
-                    if(marker && newCoords.length) marker.setLatLng(newCoords[newCoords.length-1]);
-                    document.getElementById('stat-points').innerText = ks.length;
                 });
+            },
 
-            }, 200);
+            openFullMap: (id, data) => {
+                const overlay = document.getElementById('admin-map-overlay');
+                overlay.classList.remove('hidden-view');
+                document.getElementById('map-unit-title').innerText = `UNIT: ${data.name}`;
+                
+                // Stats Init
+                document.getElementById('stat-start').innerText = new Date(data.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                document.getElementById('stat-dist').innerText = (data.distance || 0) + " km";
+
+                // Init Map
+                setTimeout(() => {
+                    if(!state.mapFull) {
+                        state.mapFull = L.map('map-full').setView([3.1390, 101.6869], 13);
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            attribution: '&copy; OpenStreetMap'
+                        }).addTo(state.mapFull);
+                    } else {
+                        state.mapFull.invalidateSize();
+                    }
+
+                    // Reset Layers
+                    if(state.pathLine) state.mapFull.removeLayer(state.pathLine);                    if(state.marker) state.mapFull.removeLayer(state.marker);
+                    state.pathCoords = [];
+
+                    // Process Path
+                    if(data.path) {
+                        const keys = Object.keys(data.path).sort();
+                        document.getElementById('stat-points').innerText = keys.length;
+                        
+                        keys.forEach(k => {
+                            const p = data.path[k];
+                            state.pathCoords.push([p.lat, p.lng]);
+                        });
+
+                        if(state.pathCoords.length > 0) {
+                            state.pathLine = L.polyline(state.pathCoords, {color: '#3b82f6', weight: 4, opacity: 0.8}).addTo(state.mapFull);
+                            state.marker = L.marker(state.pathCoords[state.pathCoords.length-1]).addTo(state.mapFull)
+                                .bindPopup(`<b>${data.name}</b><br>Live Position`).openPopup();
+                            
+                            state.mapFull.fitBounds(state.pathLine.getBounds(), {padding: [50, 50]});
+                        }
+                    }
+
+                    // Realtime Listener
+                    onValue(ref(db, `sessions/${id}`), (snap) => {
+                        const v = snap.val();
+                        if(!v || !v.path) return;
+                        
+                        document.getElementById('stat-duration').innerText = Math.floor((Date.now() - v.startTime)/60000) + " min";
+                        
+                        const ks = Object.keys(v.path).sort();
+                        document.getElementById('stat-points').innerText = ks.length;
+                        
+                        const newCoords = ks.map(k => [v.path[k].lat, v.path[k].lng]);
+                        
+                        if(state.pathLine) state.pathLine.setLatLngs(newCoords);
+                        if(state.marker && newCoords.length) {
+                            state.marker.setLatLng(newCoords[newCoords.length-1]);
+                            // Optional: Auto pan if lagging? Better not for UX.
+                        }
+                    });
+
+                }, 100);
+            },
+
+            closeMap: () => {
+                document.getElementById('admin-map-overlay').classList.add('hidden-view');
+            },
+
+            // Helper Math
+            getDist: (lat1, lon1, lat2, lon2) => {                const R = 6371; 
+                const dLat = (lat2-lat1) * Math.PI/180;
+                const dLon = (lon2-lon1) * Math.PI/180;
+                const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+                return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+            }
         };
 
-        window.closeMap = () => {
-            document.getElementById('admin-map-panel').classList.add('hidden-view');
-        };
-
-        // Helper Math
-        function getDist(lat1, lon1, lat2, lon2) {
-            const R = 6371; 
-            const dLat = (lat2-lat1) * Math.PI/180;
-            const dLon = (lon2-lon1) * Math.PI/180;
-            const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
-            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
-        }
-
-        // Start
-        window.goTo('landing');    </script>
+        // Expose to window
+        window.app = app;
+        app.nav('landing');
+    </script>
 </body>
 </html>
