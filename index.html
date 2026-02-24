@@ -967,7 +967,6 @@ function updateStats(online, total, emergency, moving) {
   document.getElementById('stat-emergency').textContent = emergency;
   document.getElementById('stat-moving').textContent = moving;
 }
-    
         console.log(`✅ Loaded ${totalCount} users, ${onlineCount} online`);      }, (error) => {
         console.error('❌ Error listening users:', error);
         document.getElementById('user-list').innerHTML = `
