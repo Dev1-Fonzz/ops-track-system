@@ -1,58 +1,288 @@
 <!DOCTYPE html>
-<html lang="ms" data-theme="light">
+<html lang="ms">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OpsTrack • Demo Mode</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a73e8">
+  <title>OpsTrack • Sistem Penjejakan</title>
   
-  <!-- Leaflet Map (FREE, No Token) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- 🗺️ Leaflet Map (FREE - No Token) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
+  <!-- ⚡ Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+    import { getDatabase, ref, set, update, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-database.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+
+    // ================================================================
+    // 🔧 KONFIGURASI
+    // ================================================================
+    const config = {
+      firebase: {
+        apiKey: "AIzaSyABchyom-zF_ZWuV7HWiDLWBaopBQ1TYxk",
+        authDomain: "ops-track-system.firebaseapp.com",
+        databaseURL: "https://ops-track-system-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "ops-track-system",
+        storageBucket: "ops-track-system.firebasestorage.app",
+        messagingSenderId: "706189064777",
+        appId: "1:706189064777:web:03f71ed77e5c3e1f265d98"
+      },
+      map: { center: [3.1390, 101.6869], zoom: 11 }
+    };
+
+    const app = initializeApp(config.firebase);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+
+    // ================================================================
+    // 🌐 STATE
+    // ================================================================
+    const state = {
+      user: null, role: 'operator', map: null, markers: new Map(),
+      polyline: null, route: [], watchId: null, tracking: false, pos: null
+    };
+
+    // ================================================================
+    // 🔐 AUTH
+    // ================================================================
+    onAuthStateChanged(auth, async (user) => {      if (user) {
+        state.user = user;
+        // Auto create operator profile
+        await update(ref(db, `operators/${user.uid}`), {
+          name: `Operator_${user.uid.slice(0,6)}`,
+          status: 'idle', isOnline: true, lastSeen: Date.now(),
+          createdAt: Date.now()
+        });
+        onDisconnect(ref(db, `operators/${user.uid}/isOnline`)).set(false);
+        showDashboard();
+        initMap();
+        listenData();
+        toast('✅ Log masuk berjaya', 'success');
+      } else {
+        showLogin();
+      }
+    });
+
+    async function login() {
+      try {
+        await signInAnonymously(auth);
+      } catch (e) {
+        toast('❌ ' + (e.code === 'auth/operation-not-allowed' 
+          ? 'Enable Anonymous Auth di Firebase Console!' 
+          : e.message), 'error');
+      }
+    }
+
+    async function logout() {
+      if (state.watchId) navigator.geolocation.clearWatch(state.watchId);
+      await signOut(auth);
+      location.reload();
+    }
+
+    // ================================================================
+    // 🗺️ MAP
+    // ================================================================
+    function initMap() {
+      state.map = L.map('map', { zoomControl: false }).setView(config.map.center, config.map.zoom);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap', maxZoom: 19
+      }).addTo(state.map);
+      L.control.zoom({ position: 'topright' }).addTo(state.map);
+      L.control.locate({ position: 'topright', drawCircle: true, drawMarker: true }).addTo(state.map);
+    }
+
+    function updateMarker(id, lat, lng, status, name = 'Operator') {
+      const colors = { moving: '#34a853', stationary: '#f9ab00', idle: '#999', emergency: '#ea4335' };
+      if (!state.markers.has(id)) {
+        const m = L.circleMarker([lat, lng], {          radius: 8, fillColor: colors[status] || '#1a73e8', color: '#fff', weight: 2, fillOpacity: 0.9
+        }).addTo(state.map);
+        m.bindPopup(`<b>${name}</b><br>${status}`);
+        state.markers.set(id, m);
+      } else {
+        const m = state.markers.get(id);
+        m.setLatLng([lat, lng]);
+        m.setStyle({ fillColor: colors[status] || '#1a73e8' });
+        m.setPopupContent(`<b>${name}</b><br>${status}`);
+      }
+    }
+
+    function updateRoute(lat, lng) {
+      state.route.push([lng, lat]);
+      if (state.route.length > 500) state.route.shift();
+      if (state.polyline) state.map.removeLayer(state.polyline);
+      if (state.route.length > 1) {
+        state.polyline = L.polyline(state.route.map(p => [p[1], p[0]]), {
+          color: '#1a73e8', weight: 4, opacity: 0.8, lineCap: 'round'
+        }).addTo(state.map);
+      }
+    }
+
+    // ================================================================
+    // 📡 DATA
+    // ================================================================
+    function listenData() {
+      onValue(ref(db, 'operators'), (snap) => {
+        const data = snap.val();
+        if (!data) return;
+        Object.entries(data).forEach(([id, op]) => {
+          if (op.location?.lat && op.location?.lng) {
+            updateMarker(id, op.location.lat, op.location.lng, op.status, op.name);
+          }
+        });
+      });
+    }
+
+    async function updateLocation(lat, lng, acc, speed) {
+      if (!state.user) return;
+      state.pos = { lat, lng, acc, speed, ts: Date.now() };
+      await update(ref(db, `operators/${state.user.uid}`), {
+        location: { lat, lng, accuracy: acc, speed, timestamp: Date.now() },
+        status: speed > 0.5 ? 'moving' : 'stationary',
+        lastSeen: Date.now()
+      });
+      updateRoute(lat, lng);
+      document.getElementById('loc').innerHTML = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}<br>🎯 ${acc}m ${speed > 0 ? `• 🚀 ${speed} km/j` : ''}`;
+    }
+    // ================================================================
+    // 🛰️ GPS
+    // ================================================================
+    function startTrack() {
+      if (!navigator.geolocation) return toast('❌ GPS tidak disokong', 'error');
+      state.watchId = navigator.geolocation.watchPosition(
+        (p) => updateLocation(p.coords.latitude, p.coords.longitude, 
+          Math.round(p.coords.accuracy), 
+          p.coords.speed ? Math.round(p.coords.speed * 3.6 * 10) / 10 : 0),
+        (e) => toast('⚠️ GPS: ' + e.message, 'warning'),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+      state.tracking = true;
+      $('#btn-start').disabled = true; $('#btn-stop').disabled = false;
+      toast('🛰️ Tracking ON', 'success');
+    }
+
+    function stopTrack() {
+      if (state.watchId) navigator.geolocation.clearWatch(state.watchId);
+      state.tracking = false;
+      $('#btn-start').disabled = false; $('#btn-stop').disabled = true;
+      toast('⏹ Tracking OFF', 'info');
+    }
+
+    // ================================================================
+    // 🎨 UI
+    // ================================================================
+    function showLogin() {
+      $('#login-screen').classList.remove('hidden');
+      $('#dashboard').classList.add('hidden');
+    }
+
+    function showDashboard() {
+      $('#login-screen').classList.add('hidden');
+      $('#dashboard').classList.remove('hidden');
+    }
+
+    function toast(msg, type = 'info') {
+      const t = document.createElement('div');
+      t.className = `toast toast-${type}`;
+      t.textContent = msg;
+      $('#toast-container').appendChild(t);
+      setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 4000);
+    }
+
+    function $(id) { return document.getElementById(id); }
+
+    // ================================================================
+    // 🎮 EVENTS
+    // ================================================================    $('#btn-login').onclick = login;
+    $('#btn-logout').onclick = logout;
+    $('#btn-start').onclick = startTrack;
+    $('#btn-stop').onclick = stopTrack;
+    $('#btn-sos').onclick = () => {
+      if (confirm('🚨 Hantar SOS?')) {
+        if (state.user) update(ref(db, `operators/${state.user.uid}`), { status: 'emergency' });
+        toast('🚨 SOS DIHANTAR!', 'emergency');
+      }
+    };
+    $$('[data-checkin]').forEach(b => b.onclick = (e) => {
+      const types = { start: '🚀 Mula', checkpoint: '✅ Checkpoint', rest: '☕ Rehat', complete: '🏁 Selesai' };
+      toast(types[e.target.dataset.checkin], 'success');
+    });
+    $('#theme-toggle').onclick = () => {
+      const dark = document.body.getAttribute('data-theme') === 'dark';
+      document.body.setAttribute('data-theme', dark ? 'light' : 'dark');
+    };
+
+    function $$(sel) { return document.querySelectorAll(sel); }
+
+    // Online status
+    window.addEventListener('online', () => $('#online-dot').classList.add('online'));
+    window.addEventListener('offline', () => $('#online-dot').classList.remove('online'));
+  </script>
+
+  <!-- 🎨 CSS -->
   <style>
     :root {
+      --bg: #ffffff; --card: #f8f9fa; --text: #202124; --border: #dadce0;
       --primary: #1a73e8; --success: #34a853; --warning: #f9ab00;
-      --error: #ea4335; --emergency: #d93025; --bg: #ffffff;
-      --text: #202124; --card: #f8f9fa; --border: #dadce0;
+      --error: #ea4335; --emergency: #d93025;
     }
     [data-theme="dark"] {
-      --bg: #1a1a1a; --text: #e8eaed; --card: #2d2d2d; --border: #3c4043;
+      --bg: #1a1a1a; --card: #2d2d2d; --text: #e8eaed; --border: #3c4043;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: system-ui, sans-serif; background: var(--bg);
-      color: var(--text); height: 100vh; display: flex; flex-direction: column;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
     }
     .hidden { display: none !important; }
-    
-    /* Header */
-    .header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 1rem; background: var(--card); border-bottom: 1px solid var(--border);
+
+    /* Login */
+    #login-screen {
+      display: flex; align-items: center; justify-content: center;
+      height: 100vh; background: linear-gradient(135deg, var(--primary), #0d47a1);
     }
-    .logo { font-size: 1.5rem; font-weight: bold; color: var(--primary); }
-    .header-actions { display: flex; gap: 0.5rem; align-items: center; }
-    
+    .login-box {
+      background: white; padding: 2.5rem; border-radius: 16px;      box-shadow: 0 10px 40px rgba(0,0,0,0.2); text-align: center; max-width: 400px; width: 90%;
+    }
+    .login-box h1 { color: var(--primary); margin-bottom: 0.5rem; }
+    .login-box p { color: #666; margin-bottom: 1.5rem; }
+
+    /* Header */
+    header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.75rem 1rem; background: var(--card);
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { font-size: 1.25rem; font-weight: 700; color: var(--primary); }
+    .header-right { display: flex; align-items: center; gap: 0.75rem; }
+    #online-dot {
+      width: 10px; height: 10px; border-radius: 50%; background: var(--error);
+    }
+    #online-dot.online { background: var(--success); }
+
     /* Map */
-    #map { flex: 1; width: 100%; }
-    
+    #map { height: calc(100vh - 60px); width: 100%; }
+
     /* Panels */
     .panel {
       position: absolute; background: var(--card); padding: 1rem;
-      border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      z-index: 1000; max-width: 300px; width: 90%;
+      border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000; max-width: 320px; width: calc(100% - 2rem);
     }
+    .panel h4 { margin-bottom: 0.75rem; font-size: 0.95rem; }
     .bottom-left { bottom: 1rem; left: 1rem; }
     .bottom-right { bottom: 1rem; right: 1rem; }
-    .top-right { top: 1rem; right: 1rem; }
-    
+
     /* Buttons */
-    .btn {      padding: 0.5rem 1rem; border: none; border-radius: 4px;
-      background: var(--primary); color: white; cursor: pointer;
-      font-weight: 500; transition: opacity 0.2s;
+    .btn {
+      padding: 0.6rem 1.2rem; border: none; border-radius: 8px;
+      background: var(--primary); color: white; font-weight: 600;
+      cursor: pointer; transition: all 0.2s; font-size: 0.9rem;
     }
-    .btn:hover { opacity: 0.9; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     .btn-success { background: var(--success); }
     .btn-warning { background: var(--warning); color: #202124; }
     .btn-emergency {
@@ -62,16 +292,40 @@
     @keyframes pulse {
       0%, 100% { box-shadow: 0 0 0 0 rgba(217,48,37,0.7); }
       50% { box-shadow: 0 0 0 10px rgba(217,48,37,0); }
+    }    .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+    .btn-block { width: 100%; }
+
+    /* Location */
+    #loc {
+      font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.8rem;
+      background: rgba(0,0,0,0.05); padding: 0.5rem; border-radius: 6px;
+      margin-bottom: 0.75rem;
     }
-    
+
+    /* Progress */
+    .progress {
+      height: 6px; background: var(--border); border-radius: 3px;
+      overflow: hidden; margin: 0.5rem 0;
+    }
+    .progress-fill {
+      height: 100%; background: var(--success);
+      transition: width 0.3s ease;
+    }
+
+    /* Check-in buttons */
+    .checkin-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.3rem;
+      margin-top: 0.75rem;
+    }
+
     /* Toast */
     #toast-container {
       position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
       z-index: 2000; display: flex; flex-direction: column; gap: 0.5rem;
     }
     .toast {
-      padding: 0.8rem 1.5rem; border-radius: 4px; color: white;
-      font-weight: 500; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      padding: 0.75rem 1.5rem; border-radius: 8px; color: white;
+      font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
       animation: slideUp 0.3s ease;
     }
     @keyframes slideUp {
@@ -83,423 +337,77 @@
     .toast-warning { background: var(--warning); color: #202124; }
     .toast-emergency { background: var(--emergency); }
     .toast-info { background: var(--primary); }
-    
-    /* Cards */
-    .card {
-      background: var(--bg); border: 1px solid var(--border);
-      padding: 0.8rem; border-radius: 6px; margin-bottom: 0.5rem;
-    }
-    .mission-card { border-left: 4px solid var(--primary); }
-    
-    /* Progress */
-    .progress-bar {
-      height: 6px; background: var(--border); border-radius: 3px;
-      overflow: hidden; margin: 0.5rem 0;
-    }
-    .progress-fill {      height: 100%; background: var(--success);
-      transition: width 0.3s ease;
-    }
-    
-    /* Operator List */
-    .operator-list { max-height: 200px; overflow-y: auto; }
-    .operator-item {
-      display: flex; align-items: center; gap: 0.5rem;
-      padding: 0.5rem; border-bottom: 1px solid var(--border);
-      cursor: pointer;
-    }
-    .operator-item:hover { background: rgba(0,0,0,0.05); }
-    .status-dot {
-      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-    }
-    .status-dot.moving { background: var(--success); }
-    .status-dot.stationary { background: var(--warning); }
-    .status-dot.idle { background: #999; }
-    .status-dot.emergency { background: var(--emergency); }
-    
-    /* Location Display */
-    .location-info { font-size: 0.85rem; font-family: monospace; }
-    
-    /* Online Indicator */
-    .online-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--error);
-    }
-    .online-dot.online { background: var(--success); }
-    
-    /* Login Screen */
-    .login-container {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%); text-align: center;
-    }
-    
+
     /* Responsive */
     @media (max-width: 768px) {
-      .panel { width: calc(100% - 2rem); }
-      .logo span { display: none; }
-    }
+      .panel { width: calc(100% - 1.5rem); }
+      .login-box { padding: 1.5rem; }    }
   </style>
 </head>
-<body>
-  <!-- Login Screen -->
+<body data-theme="light">
+
+  <!-- 🔐 Login -->
   <div id="login-screen">
-    <div class="login-container">
-      <h1 style="margin-bottom: 1rem;">🛰️ OpsTrack</h1>
-      <p style="margin-bottom: 1.5rem; color: #666;">Sistem Penjejakan Operator</p>
-            <div style="margin-bottom: 1rem;">
-        <label style="display: block; margin-bottom: 0.5rem;">Pilih Mod:</label>
-        <select id="role-select" style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
-          <option value="operator">👤 Operator</option>
-          <option value="admin">👁️ Admin/Monitor</option>
-        </select>
-      </div>
-      
-      <button id="btn-start" class="btn" style="width: 100%; padding: 1rem; font-size: 1rem;">
+    <div class="login-box">
+      <h1>🛰️ OpsTrack</h1>
+      <p>Sistem Penjejakan Operator Masa Nyata</p>
+      <button id="btn-login" class="btn btn-block" style="padding: 1rem; font-size: 1rem;">
         🚀 MULA SEKARANG
       </button>
-      
-      <p style="margin-top: 1.5rem; font-size: 0.85rem; color: #999;">
-        ✅ Demo Mode - Tanpa Setup Firebase<br>
-        📍 GPS akan berfungsi jika dibenarkan
+      <p style="margin-top: 1rem; font-size: 0.8rem; color: #999;">
+        ✅ Percuma • Tanpa Kad Kredit • GPS Real
       </p>
     </div>
   </div>
 
-  <!-- Dashboard -->
-  <div id="dashboard-screen" class="hidden">
-    <!-- Header -->
-    <header class="header">
-      <div class="logo">🛰️ <span>OpsTrack</span></div>
-      <div class="header-actions">
-        <div id="online-indicator" class="online-dot" title="Status Internet"></div>
-        <span id="role-display" style="font-size: 0.85rem;">👤 Operator</span>
-        <button id="btn-logout" class="btn btn-warning" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">🚪 Keluar</button>
+  <!-- 🗺️ Dashboard -->
+  <div id="dashboard" class="hidden">
+    <header>
+      <div class="logo">🛰️ OpsTrack</div>
+      <div class="header-right">
+        <div id="online-dot" title="Status Internet"></div>
+        <button id="theme-toggle" class="btn btn-sm">🌙</button>
+        <button id="btn-logout" class="btn btn-sm btn-warning">🚪</button>
       </div>
     </header>
 
-    <!-- Map -->
     <div id="map"></div>
 
     <!-- Operator Panel -->
-    <div class="panel bottom-left" id="operator-panel">
-      <div id="location-display" class="location-info" style="margin-bottom: 0.5rem;">
-        📍 Menunggu GPS...
-      </div>
+    <div class="panel bottom-left">
+      <h4>📍 Lokasi Anda</h4>
+      <div id="loc">Menunggu GPS...</div>
       
-      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <button id="btn-start-tracking" class="btn btn-success" style="flex: 1;">▶ Start</button>
-        <button id="btn-stop-tracking" class="btn btn-warning" style="flex: 1;" disabled>⏹ Stop</button>
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+        <button id="btn-start" class="btn btn-success btn-sm" style="flex: 1;">▶ Start</button>
+        <button id="btn-stop" class="btn btn-warning btn-sm" style="flex: 1;" disabled>⏹ Stop</button>
       </div>
-      
-      <div id="mission-card" class="card mission-card">
-        <h4 style="margin-bottom: 0.5rem;">🎯 Misi Aktif</h4>
-        <p style="font-size: 0.85rem; color: #666;">Delivery KLCC → Bangsar</p>
-        <div class="progress-bar">
-          <div class="progress-fill" id="progress-fill" style="width: 35%;"></div>        </div>
-        <small id="progress-text">35% Selesai</small>
+
+      <div style="background: var(--bg); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border);">
+        <h4 style="font-size: 0.85rem; margin-bottom: 0.5rem;">🎯 Misi Semasa</h4>
+        <p style="font-size: 0.8rem; color: #666; margin-bottom: 0.5rem;">Delivery KLCC → Bangsar</p>
+        <div class="progress"><div class="progress-fill" style="width: 35%;"></div></div>
+        <small style="color: #666;">35% Selesai</small>
       </div>
-      
-      <div style="display: flex; gap: 0.3rem; margin-top: 0.5rem;">
-        <button data-checkin="start" class="btn" style="flex: 1; font-size: 0.8rem;">🚀</button>
-        <button data-checkin="checkpoint" class="btn" style="flex: 1; font-size: 0.8rem;">✅</button>
-        <button data-checkin="rest" class="btn" style="flex: 1; font-size: 0.8rem;">☕</button>
-        <button data-checkin="complete" class="btn" style="flex: 1; font-size: 0.8rem;">🏁</button>
+
+      <div class="checkin-grid">        <button data-checkin="start" class="btn btn-sm">🚀</button>
+        <button data-checkin="checkpoint" class="btn btn-sm">✅</button>
+        <button data-checkin="rest" class="btn btn-sm">☕</button>
+        <button data-checkin="complete" class="btn btn-sm">🏁</button>
       </div>
     </div>
 
-    <!-- Admin Panel -->
-    <div class="panel top-right hidden" id="admin-panel">
-      <h4 style="margin-bottom: 0.5rem;">👥 Operator Aktif</h4>
-      <div id="operator-list" class="operator-list">
-        <!-- Auto-populated -->
-      </div>
-      <div style="margin-top: 1rem;">
-        <button id="btn-add-dummy" class="btn btn-success" style="width: 100%; font-size: 0.85rem;">
-          ➕ Tambah Operator Dummy
-        </button>
-      </div>
-    </div>
-
-    <!-- SOS Button -->
+    <!-- SOS -->
     <div class="panel bottom-right">
-      <button id="btn-sos" class="btn btn-emergency" style="width: 100%; padding: 1rem;">
-        🚨 SOS / KECEMASAN
+      <button id="btn-sos" class="btn btn-emergency btn-block" style="padding: 1rem;">
+        🚨 SOS KECEMASAN
       </button>
-      <p style="margin-top: 0.5rem; font-size: 0.75rem; color: #666; text-align: center;">
-        Tekan untuk hantar alert
+      <p style="margin-top: 0.5rem; font-size: 0.7rem; color: #666; text-align: center;">
+        Tekan untuk hantar alert dengan lokasi
       </p>
     </div>
   </div>
 
-  <!-- Toast Container -->
   <div id="toast-container"></div>
-
-  <script>
-    // ================================================================
-    // 🎮 DEMO MODE - NO FIREBASE REQUIRED!
-    // ================================================================
-    
-    const AppState = {
-      role: 'operator',
-      tracking: false,
-      watchId: null,
-      position: null,
-      map: null,      markers: new Map(),
-      polyline: null,
-      routePoints: [],
-      dummyOperators: [
-        { id: 'op1', name: 'Ahmad', lat: 3.1390, lng: 101.6869, status: 'moving' },
-        { id: 'op2', name: 'Siti', lat: 3.1478, lng: 101.6953, status: 'stationary' },
-        { id: 'op3', name: 'Tan', lat: 3.0739, lng: 101.5756, status: 'idle' }
-      ]
-    };
-
-    // ================================================================
-    // 🗺️ MAP FUNCTIONS
-    // ================================================================
-    
-    function initMap() {
-      AppState.map = L.map('map').setView([3.1390, 101.6869], 11);
-      
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-      }).addTo(AppState.map);
-      
-      // Add dummy operators for admin view
-      if (AppState.role === 'admin') {
-        AppState.dummyOperators.forEach(op => {
-          const marker = L.circleMarker([op.lat, op.lng], {
-            radius: 8,
-            fillColor: getStatusColor(op.status),
-            color: '#fff',
-            weight: 2,
-            fillOpacity: 0.9
-          }).addTo(AppState.map);
-          
-          marker.bindPopup(`<b>${op.name}</b><br>Status: ${op.status}`);
-          AppState.markers.set(op.id, marker);
-        });
-      }
-      
-      showToast('🗺️ Peta dimuatkan', 'success');
-    }
-    
-    function getStatusColor(status) {
-      const colors = {
-        moving: '#34a853',
-        stationary: '#f9ab00',
-        idle: '#999999',
-        emergency: '#ea4335'
-      };
-      return colors[status] || '#1a73e8';
-    }
-        function updatePosition(lat, lng, accuracy, speed) {
-      AppState.position = { lat, lng, accuracy, speed };
-      
-      // Update location display
-      document.getElementById('location-display').innerHTML = `
-        📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}<br>
-        🎯 ${accuracy}m ${speed > 0 ? `• 🚀 ${speed} km/j` : ''}
-      `;
-      
-      // Add/update marker
-      if (!AppState.markers.has('me')) {
-        const marker = L.circleMarker([lat, lng], {
-          radius: 10,
-          fillColor: '#1a73e8',
-          color: '#fff',
-          weight: 3,
-          fillOpacity: 0.9
-        }).addTo(AppState.map);
-        marker.bindPopup('<b>Anda</b><br>Operator Aktif');
-        AppState.markers.set('me', marker);
-      } else {
-        const marker = AppState.markers.get('me');
-        marker.setLatLng([lat, lng]);
-      }
-      
-      // Add route point
-      AppState.routePoints.push([lng, lat]);
-      if (AppState.routePoints.length > 100) AppState.routePoints.shift();
-      
-      // Update polyline
-      if (AppState.polyline) AppState.map.removeLayer(AppState.polyline);
-      if (AppState.routePoints.length > 1) {
-        AppState.polyline = L.polyline(
-          AppState.routePoints.map(p => [p[1], p[0]]),
-          { color: '#1a73e8', weight: 4, opacity: 0.8 }
-        ).addTo(AppState.map);
-      }
-      
-      // Follow user
-      AppState.map.flyTo([lat, lng], 15, { duration: 0.5 });
-    }
-    
-    // ================================================================
-    // 🛰️ GPS TRACKING
-    // ================================================================
-    
-    function startTracking() {
-      if (!navigator.geolocation) {
-        showToast('❌ GPS tidak disokong', 'error');
-        return;      }
-      
-      AppState.watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const { latitude, longitude, accuracy, speed } = pos.coords;
-          updatePosition(
-            latitude,
-            longitude,
-            Math.round(accuracy),
-            speed ? Math.round(speed * 3.6 * 10) / 10 : 0
-          );
-        },
-        (err) => {
-          console.warn('GPS Error:', err);
-          showToast('⚠️ GPS error: ' + err.message, 'warning');
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-      
-      AppState.tracking = true;
-      document.getElementById('btn-start-tracking').disabled = true;
-      document.getElementById('btn-stop-tracking').disabled = false;
-      showToast('🛰️ Tracking ON', 'success');
-    }
-    
-    function stopTracking() {
-      if (AppState.watchId) {
-        navigator.geolocation.clearWatch(AppState.watchId);
-        AppState.watchId = null;
-      }
-      AppState.tracking = false;
-      document.getElementById('btn-start-tracking').disabled = false;
-      document.getElementById('btn-stop-tracking').disabled = true;
-      showToast('⏹ Tracking OFF', 'info');
-    }
-    
-    // ================================================================
-    // 🎨 UI FUNCTIONS
-    // ================================================================
-    
-    function showToast(message, type = 'info') {
-      const container = document.getElementById('toast-container');
-      const toast = document.createElement('div');
-      toast.className = `toast toast-${type}`;
-      toast.textContent = message;
-      container.appendChild(toast);
-      
-      setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);      }, 4000);
-    }
-    
-    function updateOperatorList() {
-      const list = document.getElementById('operator-list');
-      list.innerHTML = AppState.dummyOperators.map(op => `
-        <div class="operator-item" onclick="alert('Lihat ${op.name}')">
-          <span class="status-dot ${op.status}"></span>
-          <span><b>${op.name}</b></span>
-          <span style="margin-left: auto; font-size: 0.85rem; color: #666;">${op.status}</span>
-        </div>
-      `).join('');
-    }
-    
-    function addDummyOperator() {
-      const names = ['Ali', 'Abu', 'Mei', 'Raj', 'Lim', 'Wong'];
-      const id = 'op' + (AppState.dummyOperators.length + 1);
-      const name = names[Math.floor(Math.random() * names.length)];
-      const lat = 3.1390 + (Math.random() - 0.5) * 0.1;
-      const lng = 101.6869 + (Math.random() - 0.5) * 0.1;
-      const status = ['moving', 'stationary', 'idle'][Math.floor(Math.random() * 3)];
-      
-      AppState.dummyOperators.push({ id, name, lat, lng, status });
-      
-      // Add marker
-      const marker = L.circleMarker([lat, lng], {
-        radius: 8,
-        fillColor: getStatusColor(status),
-        color: '#fff',
-        weight: 2,
-        fillOpacity: 0.9
-      }).addTo(AppState.map);
-      marker.bindPopup(`<b>${name}</b><br>Status: ${status}`);
-      AppState.markers.set(id, marker);
-      
-      updateOperatorList();
-      showToast(`✅ ${name} ditambah`, 'success');
-    }
-    
-    // ================================================================
-    // 🎮 EVENT LISTENERS
-    // ================================================================
-    
-    document.addEventListener('DOMContentLoaded', () => {
-      // Start button
-      document.getElementById('btn-start').addEventListener('click', () => {
-        AppState.role = document.getElementById('role-select').value;
-        
-        document.getElementById('login-screen').classList.add('hidden');
-        document.getElementById('dashboard-screen').classList.remove('hidden');        document.getElementById('role-display').textContent = 
-          AppState.role === 'admin' ? '👁️ Admin' : '👤 Operator';
-        
-        // Show/hide panels
-        document.getElementById('operator-panel').classList.toggle('hidden', AppState.role === 'admin');
-        document.getElementById('admin-panel').classList.toggle('hidden', AppState.role === 'operator');
-        
-        // Init map
-        initMap();
-        
-        // Update admin list
-        if (AppState.role === 'admin') {
-          updateOperatorList();
-        }
-        
-        showToast('✅ Selamat datang!', 'success');
-      });
-      
-      // Logout
-      document.getElementById('btn-logout').addEventListener('click', () => {
-        stopTracking();
-        location.reload();
-      });
-      
-      // Tracking buttons
-      document.getElementById('btn-start-tracking').addEventListener('click', startTracking);
-      document.getElementById('btn-stop-tracking').addEventListener('click', stopTracking);
-      
-      // SOS
-      document.getElementById('btn-sos').addEventListener('click', () => {
-        if (confirm('🚨 Hantar alert keceemasan?')) {
-          showToast('🚨 SOS DIHANTAR!', 'emergency');
-        }
-      });
-      
-      // Check-in buttons
-      document.querySelectorAll('[data-checkin]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const type = e.target.dataset.checkin;
-          const labels = { start: '🚀 Mula', checkpoint: '✅ Checkpoint', rest: '☕ Rehat', complete: '🏁 Selesai' };
-          showToast(labels[type] || type, 'success');
-          
-          // Update progress demo
-          const progress = Math.min(100, parseInt(document.getElementById('progress-fill').style.width) + 15);
-          document.getElementById('progress-fill').style.width = progress + '%';
-          document.getElementById('progress-text').textContent = progress + '% Selesai';
-        });
-      });
-      
-      // Add dummy operator (admin)      document.getElementById('btn-add-dummy').addEventListener('click', addDummyOperator);
-      
-      // Online status
-      function updateOnlineStatus() {
-        const dot = document.getElementById('online-indicator');
-        dot.classList.toggle('online', navigator.onLine);
-        dot.title = navigator.onLine ? 'Online' : 'Offline';
-      }
-      window.addEventListener('online', updateOnlineStatus);
-      window.addEventListener('offline', updateOnlineStatus);
-      updateOnlineStatus();
-    });
-  </script>
 </body>
 </html>
