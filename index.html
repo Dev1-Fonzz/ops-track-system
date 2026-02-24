@@ -26,7 +26,7 @@
     }
     .hidden { display: none !important; }
 
-    /* Login Screen */
+    /* Login */
     #login-screen {
       display: flex; align-items: center; justify-content: center;
       height: 100vh; background: linear-gradient(135deg, var(--primary), #0d47a1);
@@ -82,8 +82,8 @@
     .panel {
       position: absolute; background: var(--card); padding: 1rem;
       border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      z-index: 1000; max-width: 320px; width: calc(100% - 2rem);
-      max-height: 60vh; overflow-y: auto;
+      z-index: 1000; max-width: 350px; width: calc(100% - 2rem);
+      max-height: 65vh; overflow-y: auto;
     }
     .bottom-left { bottom: 1rem; left: 1rem; }
     .bottom-right { bottom: 1rem; right: 1rem; }
@@ -98,6 +98,7 @@
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }    .btn-success { background: var(--success); }
     .btn-warning { background: var(--warning); color: #202124; }
+    .btn-error { background: var(--error); }
     .btn-emergency { background: var(--emergency); animation: pulse 2s infinite; }
     @keyframes pulse {
       0%, 100% { box-shadow: 0 0 0 0 rgba(217,48,37,0.7); }
@@ -105,6 +106,11 @@
     }
     .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
     .btn-block { width: 100%; }
+    .btn-danger { background: var(--error); }
+    .btn-outline {
+      background: transparent; border: 2px solid var(--border); color: var(--text);
+    }
+    .btn-outline:hover { border-color: var(--primary); }
 
     /* Location */
     #location-display {
@@ -139,19 +145,22 @@
     .user-list { margin-top: 0.5rem; }
     .user-item {
       display: flex; align-items: center; gap: 0.5rem;
-      padding: 0.5rem; background: var(--bg);
-      border-radius: 8px; margin-bottom: 0.5rem;
+      padding: 0.5rem; background: var(--bg);      border-radius: 8px; margin-bottom: 0.5rem;
       cursor: pointer; border: 1px solid var(--border);
+      transition: all 0.2s;
     }
-    .user-item:hover { border-color: var(--primary); }
+    .user-item:hover { border-color: var(--primary); background: #f0f7ff; }
     .user-item.active { border-color: var(--primary); background: #e8f0fe; }
-    .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }    .status-dot.online { background: var(--success); }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .status-dot.online { background: var(--success); }
     .status-dot.offline { background: #999; }
     .status-dot.emergency { background: var(--emergency); animation: pulse 1s infinite; }
     .user-info { flex: 1; min-width: 0; }
     .user-info strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .user-info small { color: #666; font-size: 0.75rem; }
     .user-meta { text-align: right; font-size: 0.7rem; color: #999; }
+    .user-actions { display: flex; gap: 0.25rem; margin-top: 0.5rem; }
+    .user-actions button { padding: 0.25rem 0.5rem; font-size: 0.7rem; }
 
     /* Progress */
     .progress-bar {
@@ -169,6 +178,13 @@
     .stat-card .value { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
     .stat-card .label { font-size: 0.7rem; color: #666; }
 
+    /* User Detail Panel */
+    .user-detail-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);
+    }
+    .user-detail-actions { display: flex; gap: 0.25rem; }
+
     /* Toast */
     #toast-container {
       position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
@@ -178,8 +194,7 @@
       padding: 0.75rem 1.5rem; border-radius: 8px; color: white;
       font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
       animation: slideUp 0.3s ease;
-    }
-    @keyframes slideUp {
+    }    @keyframes slideUp {
       from { transform: translateY(20px); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
     }
@@ -189,12 +204,28 @@
     .toast-emergency { background: var(--emergency); }
     .toast-info { background: var(--primary); }
 
+    /* Loading */
+    .loading-spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%; border-top-color: white;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center; padding: 2rem 1rem; color: #999;
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 0.5rem; }
+
     /* Responsive */
     @media (max-width: 768px) {
       .panel { width: calc(100% - 1.5rem); }
       .login-box { padding: 1.5rem; }
       .stats-grid { grid-template-columns: 1fr; }
-    }  </style>
+    }
+  </style>
 </head>
 <body data-theme="light">
 
@@ -204,17 +235,15 @@
       <h1>👨‍👩‍👧‍👦 FamilyTrack</h1>
       <p>Pemantauan Lokasi Keluarga</p>
       
-      <!-- Role Tabs -->
       <div class="role-tabs">
         <div class="role-tab active" onclick="switchAuth('family')">📍 Ahli Keluarga</div>
         <div class="role-tab" onclick="switchAuth('operator')">👁️ Operator</div>
       </div>
       
-      <!-- Family Form (Anonymous) -->
+      <!-- Family Form -->
       <div id="family-form" class="auth-form active">
         <div class="form-group">
-          <label for="family-name">📝 Nama Anda</label>
-          <input type="text" id="family-name" placeholder="Contoh: Ahmad (Anak)">
+          <label for="family-name">📝 Nama Anda</label>          <input type="text" id="family-name" placeholder="Contoh: Ahmad (Anak)">
           <small>Nama akan dipaparkan kepada pemantau</small>
         </div>
         <button id="btn-family-login" class="btn btn-block" style="padding: 1rem; font-size: 1rem;">
@@ -225,7 +254,7 @@
         </p>
       </div>
       
-      <!-- Operator Form (Email/Password - Manual Setup) -->
+      <!-- Operator Form -->
       <div id="operator-form" class="auth-form">
         <div class="form-group">
           <label for="operator-email">📧 Email Operator</label>
@@ -243,7 +272,8 @@
           ⚠️ Akaun operator dibuat di Firebase Console
         </p>
       </div>
-    </div>  </div>
+    </div>
+  </div>
 
   <!-- 🗺️ Dashboard -->
   <div id="dashboard" class="hidden">
@@ -262,8 +292,7 @@
     <div class="panel bottom-left hidden" id="family-panel">
       <h4>📍 Lokasi Anda</h4>
       <div id="location-display">Menunggu GPS...</div>
-      <div id="family-name-display" style="margin-bottom: 0.5rem; font-weight: 600; color: var(--primary);"></div>
-      
+      <div id="family-name-display" style="margin-bottom: 0.5rem; font-weight: 600; color: var(--primary);"></div>      
       <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
         <button id="btn-start" class="btn btn-success btn-sm" style="flex: 1;">▶ Share</button>
         <button id="btn-stop" class="btn btn-warning btn-sm" style="flex: 1;" disabled>⏹ Stop</button>
@@ -292,17 +321,45 @@
         <div class="stat-card">
           <div class="value" id="stat-total">0</div>
           <div class="label">Total Ahli</div>
-        </div>      </div>
-      
-      <h4 style="margin-top: 1rem;">👥 Ahli Keluarga</h4>
-      <div id="user-list" class="user-list">
-        <small style="color: #666;">Memuatkan...</small>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="stat-emergency">0</div>
+          <div class="label">SOS</div>
+        </div>
+        <div class="stat-card">
+          <div class="value" id="stat-moving">0</div>
+          <div class="label">Bergerak</div>
+        </div>
       </div>
       
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+        <h4>👥 Ahli Keluarga</h4>
+        <button id="btn-refresh-users" class="btn btn-sm btn-outline" title="Refresh">🔄</button>
+      </div>
+      <div id="user-list" class="user-list">
+        <div class="empty-state">
+          <div class="icon">⏳</div>
+          <small>Memuatkan data...</small>
+        </div>
+      </div>      
+      <!-- Selected User Detail -->
       <div id="selected-user-detail" style="margin-top: 1rem; display: none;">
+        <div class="user-detail-header">
+          <div>
+            <strong id="selected-user-name" style="color: var(--primary); font-size: 1.1rem;">-</strong>
+            <div id="selected-user-status" style="font-size: 0.8rem; color: #666;">-</div>
+          </div>
+          <div class="user-detail-actions">
+            <button id="btn-delete-user" class="btn btn-sm btn-danger" title="Hapus Pengguna">🗑️</button>
+          </div>
+        </div>
+        
         <div style="background: #e8f0fe; padding: 0.75rem; border-radius: 8px; margin-bottom: 0.75rem;">
-          <strong id="selected-user-name" style="color: var(--primary);">-</strong>
-          <div id="selected-user-status" style="font-size: 0.8rem; color: #666;">-</div>
+          <small style="color: #666;">
+            📍 Last update: <span id="selected-user-lastupdate">-</span><br>
+            🚀 Speed: <span id="selected-user-speed">-</span><br>
+            🎯 Accuracy: <span id="selected-user-accuracy">-</span>
+          </small>
         </div>
         
         <h4 style="font-size: 0.85rem; margin-bottom: 0.5rem;">🚩 Checkpoint Perjalanan</h4>
@@ -312,11 +369,9 @@
         </div>
         <small id="route-progress-text">0% Perjalanan</small>
         
-        <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg); border-radius: 6px;">
-          <small style="color: #666;">
-            📍 Last update: <span id="selected-user-lastupdate">-</span><br>
-            🚀 Speed: <span id="selected-user-speed">-</span>
-          </small>
+        <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
+          <button id="btn-focus-user" class="btn btn-sm btn-primary" style="flex: 1;">📍 Fokus Peta</button>
+          <button id="btn-clear-route" class="btn btn-sm btn-outline" style="flex: 1;">🧹 Clear Route</button>
         </div>
       </div>
     </div>
@@ -335,13 +390,13 @@
   <div id="toast-container"></div>
 
   <!-- ⚡ Firebase + App Logic -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, set, update, onValue, onDisconnect, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  <script type="module">    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, set, update, onValue, onDisconnect, push, remove, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
     import { 
       getAuth, 
       signInAnonymously, 
-      signInWithEmailAndPassword,       onAuthStateChanged, 
+      signInWithEmailAndPassword, 
+      onAuthStateChanged, 
       signOut 
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
@@ -358,7 +413,6 @@
       appId: "1:706189064777:web:03f71ed77e5c3e1f265d98"
     };
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const auth = getAuth(app);
@@ -379,18 +433,20 @@
       tracking: false,
       pos: null,
       selectedUser: null,
+      selectedUserData: null,
       checkpointCounter: 0,
       lastCheckpointPos: null,
-      checkpointTimer: 0
+      checkpointTimer: 0,
+      allUsers: new Map()
     };
-
     // ================================================================
     // 🎨 UI FUNCTIONS
     // ================================================================
     window.switchAuth = (type) => {
       state.role = type;
       document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));      
+      document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+      
       if (type === 'family') {
         document.querySelector('.role-tab:first-child').classList.add('active');
         document.getElementById('family-form').classList.add('active');
@@ -432,14 +488,14 @@
       const t = document.createElement('div');
       t.className = `toast toast-${type}`;
       t.textContent = msg;
-      document.getElementById('toast-container').appendChild(t);
-      setTimeout(() => { 
+      document.getElementById('toast-container').appendChild(t);      setTimeout(() => { 
         t.style.opacity = '0'; 
         setTimeout(() => t.remove(), 300); 
       }, 4000);
     }
 
-    function timeAgo(timestamp) {      if (!timestamp) return '-';
+    function timeAgo(timestamp) {
+      if (!timestamp) return '-';
       const seconds = Math.floor((Date.now() - timestamp) / 1000);
       if (seconds < 60) return 'Baru sekarang';
       if (seconds < 3600) return `${Math.floor(seconds / 60)}m lalu`;
@@ -448,10 +504,10 @@
     }
 
     // ================================================================
-    // 🔐 AUTH STATE LISTENER
+    // 🔐 AUTH
     // ================================================================
     onAuthStateChanged(auth, async (user) => {
-      console.log('🔐 Auth State Changed:', user ? user.uid : 'No user');
+      console.log('🔐 Auth State:', user ? user.uid : 'No user');
       
       if (user) {
         state.user = user;
@@ -481,20 +537,15 @@
         if (state.role === 'family') {
           listenOwnData();
         } else {
-          listenAllUsers();
-        }
+          listenAllUsers();        }
         
         toast(`✅ Selamat datang!`, 'success');
       } else {
         showLogin();
       }
     });
-    // ================================================================
-    // 📍 FAMILY LOGIN (Anonymous)
-    // ================================================================
+
     document.getElementById('btn-family-login').addEventListener('click', async () => {
-      console.log('🔐 Family login clicked');
-      
       const nameInput = document.getElementById('family-name');
       state.customName = nameInput.value.trim() || '';
       
@@ -505,11 +556,8 @@
       }
       
       try {
-        console.log('🔐 Signing in anonymously...');
         await signInAnonymously(auth);
-        console.log('✅ Anonymous sign in successful');
       } catch (e) {
-        console.error('❌ Family login error:', e);
         const msg = e.code === 'auth/operation-not-allowed' 
           ? '⚠️ Enable "Anonymous Auth" di Firebase Console'
           : e.message;
@@ -517,12 +565,7 @@
       }
     });
 
-    // ================================================================
-    // 👁️ OPERATOR LOGIN (Email/Password)
-    // ================================================================
     document.getElementById('btn-operator-login').addEventListener('click', async () => {
-      console.log('🔐 Operator login clicked');
-      
       const email = document.getElementById('operator-email').value.trim();
       const password = document.getElementById('operator-password').value;
       
@@ -533,19 +576,17 @@
       
       const btn = document.getElementById('btn-operator-login');
       const originalText = btn.innerHTML;
-      btn.innerHTML = '⏳ Loading...';
+      btn.innerHTML = '<span class="loading-spinner"></span> Loading...';
       btn.disabled = true;
       
       try {
-        console.log('🔐 Signing in with email:', email);        await signInWithEmailAndPassword(auth, email, password);
-        console.log('✅ Operator sign in successful');
+        await signInWithEmailAndPassword(auth, email, password);
       } catch (e) {
-        console.error('❌ Operator login error:', e);
+        console.error('Operator login error:', e);
         let msg = e.message;
         if (e.code === 'auth/invalid-email') msg = 'Email tidak sah';
         if (e.code === 'auth/user-not-found') msg = 'Operator tidak dijumpai. Sila daftar di Firebase Console.';
-        if (e.code === 'auth/wrong-password') msg = 'Password salah';
-        if (e.code === 'auth/too-many-requests') msg = 'Terlalu banyak percubaan. Tunggu sebentar.';
+        if (e.code === 'auth/wrong-password') msg = 'Password salah';        if (e.code === 'auth/too-many-requests') msg = 'Terlalu banyak percubaan.';
         if (e.code === 'auth/operation-not-allowed') msg = 'Email/Password auth tidak dienable di Firebase';
         toast('❌ ' + msg, 'error');
       } finally {
@@ -554,15 +595,8 @@
       }
     });
 
-    // ================================================================
-    // 🚪 LOGOUT
-    // ================================================================
     document.getElementById('btn-logout').addEventListener('click', async () => {
-      console.log('🚪 Logout clicked');
-      
-      if (state.watchId) {
-        navigator.geolocation.clearWatch(state.watchId);
-      }
+      if (state.watchId) navigator.geolocation.clearWatch(state.watchId);
       
       if (state.user) {
         try {
@@ -577,16 +611,14 @@
       }
       
       await signOut(auth);
-      state.user = null;
-      state.role = 'family';
-      state.customName = '';
       location.reload();
     });
 
     // ================================================================
-    // 🗺️ MAP (Leaflet)
+    // 🗺️ MAP
     // ================================================================
-    function initMap() {      console.log('🗺️ Initializing map...');
+    function initMap() {
+      console.log('🗺️ Initializing map...');
       state.map = L.map('map', { zoomControl: false }).setView([3.1390, 101.6869], 11);
       
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -603,8 +635,7 @@
       const colors = { online: '#34a853', offline: '#999999', emergency: '#ea4335', moving: '#1a73e8' };
       
       if (!state.markers.has(userId)) {
-        const m = L.circleMarker([lat, lng], {
-          radius: isSelf ? 12 : 8,
+        const m = L.circleMarker([lat, lng], {          radius: isSelf ? 12 : 8,
           fillColor: colors[status] || '#1a73e8',
           color: '#fff',
           weight: 3,
@@ -635,7 +666,8 @@
       if (state.polylines.has(userId)) state.map.removeLayer(state.polylines.get(userId));
       
       if (route.length > 1) {
-        const polyline = L.polyline(route.map(p => [p[1], p[0]]), {          color: state.selectedUser === userId ? '#ea4335' : '#1a73e8',
+        const polyline = L.polyline(route.map(p => [p[1], p[0]]), {
+          color: state.selectedUser === userId ? '#ea4335' : '#1a73e8',
           weight: state.selectedUser === userId ? 5 : 3,
           opacity: 0.7,
           lineCap: 'round'
@@ -652,8 +684,7 @@
         weight: 2,
         fillOpacity: 0.9
       }).addTo(state.map);
-      marker.bindPopup(`<b>🚩 Checkpoint ${checkpointNum}</b><br>${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-      
+      marker.bindPopup(`<b>🚩 Checkpoint ${checkpointNum}</b><br>${lat.toFixed(4)}, ${lng.toFixed(4)}`);      
       if (!state.checkpoints.has(userId)) state.checkpoints.set(userId, []);
       const checkpoints = state.checkpoints.get(userId);
       checkpoints.push({ id: `cp_${checkpointNum}`, lat, lng, num: checkpointNum, timestamp: Date.now() });
@@ -671,6 +702,8 @@
 
     function selectUser(userId, name) {
       state.selectedUser = userId;
+      state.selectedUserData = state.allUsers.get(userId);
+      
       document.querySelectorAll('.user-item').forEach(el => el.classList.remove('active'));
       const activeEl = document.querySelector(`[data-userid="${userId}"]`);
       if (activeEl) activeEl.classList.add('active');
@@ -682,9 +715,29 @@
       }
       
       document.getElementById('selected-user-detail').style.display = 'block';
-      document.getElementById('selected-user-name').textContent = name;
+      document.getElementById('selected-user-name').textContent = name || 'Unknown';
       
-      showUserCheckpoints(userId, name);      toast(`📍 Melihat: ${name}`, 'info');
+      // Update user detail info
+      if (state.selectedUserData) {
+        const userData = state.selectedUserData;
+        document.getElementById('selected-user-status').textContent = 
+          `${userData.isOnline ? '🟢 Online' : '🔴 Offline'} • ${userData.status || '-'}`;
+        document.getElementById('selected-user-lastupdate').textContent = timeAgo(userData.lastSeen);
+        document.getElementById('selected-user-speed').textContent = 
+          userData.location?.speed ? `${userData.location.speed} km/j` : '-';
+        document.getElementById('selected-user-accuracy').textContent = 
+          userData.location?.accuracy ? `${userData.location.accuracy}m` : '-';
+      }
+      
+      // Setup delete button
+      document.getElementById('btn-delete-user').onclick = () => deleteUser(userId, name);
+      document.getElementById('btn-focus-user').onclick = () => {
+        const marker = state.markers.get(userId);
+        if (marker) state.map.flyTo(marker.getLatLng(), 15, { duration: 1 });      };
+      document.getElementById('btn-clear-route').onclick = () => clearUserRoute(userId);
+      
+      showUserCheckpoints(userId, name);
+      toast(`📍 Melihat: ${name}`, 'info');
     }
 
     function showUserCheckpoints(userId, name) {
@@ -727,13 +780,61 @@
       progressText.textContent = `${progress}% Perjalanan (${checkpoints.length} checkpoint)`;
     }
 
+    function clearUserRoute(userId) {
+      if (state.polylines.has(userId)) {
+        state.map.removeLayer(state.polylines.get(userId));        state.polylines.delete(userId);
+      }
+      if (state.polylines.has(userId + '_cp')) {
+        state.polylines.get(userId + '_cp').forEach(line => state.map.removeLayer(line));
+        state.polylines.delete(userId + '_cp');
+      }
+      state.routes.delete(userId);
+      state.checkpoints.delete(userId);
+      toast('🧹 Route cleared', 'info');
+    }
+
+    async function deleteUser(userId, name) {
+      if (!confirm(`⚠️ Hapus pengguna "${name}"?\n\nSemua data lokasi akan dipadam.`)) return;
+      
+      const btn = document.getElementById('btn-delete-user');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⏳...';
+      btn.disabled = true;
+      
+      try {
+        await remove(ref(db, `users/${userId}`));
+        toast(`✅ ${name} berjaya dihapus`, 'success');
+        
+        // Clear from map
+        if (state.markers.has(userId)) {
+          state.map.removeLayer(state.markers.get(userId));
+          state.markers.delete(userId);
+        }
+        
+        // Clear route
+        clearUserRoute(userId);
+        
+        // Hide detail panel
+        document.getElementById('selected-user-detail').style.display = 'none';
+        state.selectedUser = null;
+        state.selectedUserData = null;
+        
+      } catch (e) {
+        console.error('Delete user error:', e);
+        toast('❌ Gagal hapus: ' + e.message, 'error');
+      } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    }
+
     // ================================================================
     // 📡 DATA LISTENERS
     // ================================================================
-    function listenOwnData() {
-      onValue(ref(db, `users/${state.user.uid}`), (snap) => {
+    function listenOwnData() {      onValue(ref(db, `users/${state.user.uid}`), (snap) => {
         const data = snap.val();
-        if (data?.location?.lat && data?.location?.lng) {          updateUserMarker(
+        if (data?.location?.lat && data?.location?.lng) {
+          updateUserMarker(
             state.user.uid,
             data.location.lat,
             data.location.lng,
@@ -747,19 +848,39 @@
     }
 
     function listenAllUsers() {
-      onValue(ref(db, 'users'), (snap) => {
+      console.log('👁️ Operator: Listening to all users...');
+      const usersRef = ref(db, 'users');
+      
+      onValue(usersRef, (snap) => {
+        console.log('📊 Users snapshot:', snap.exists() ? 'Has data' : 'Empty');
         const data = snap.val();
-        if (!data) return;
         
         const userList = document.getElementById('user-list');
         userList.innerHTML = '';
         
-        let onlineCount = 0;
-        let totalCount = 0;
+        if (!data) {
+          userList.innerHTML = `
+            <div class="empty-state">
+              <div class="icon">👥</div>
+              <small>Tiada ahli keluarga dalam sistem</small>
+            </div>
+          `;
+          document.getElementById('stat-online').textContent = '0';
+          document.getElementById('stat-total').textContent = '0';
+          document.getElementById('stat-emergency').textContent = '0';
+          document.getElementById('stat-moving').textContent = '0';
+          return;
+        }
+        
+        state.allUsers.clear();
+        let onlineCount = 0, totalCount = 0, emergencyCount = 0, movingCount = 0;
         
         Object.entries(data).forEach(([userId, userData]) => {
           totalCount++;
+          state.allUsers.set(userId, userData);
+          
           if (userData.isOnline) onlineCount++;
+          if (userData.status === 'emergency') emergencyCount++;          if (userData.status === 'moving') movingCount++;
           
           if (userData.location?.lat && userData.location?.lng) {
             updateUserMarker(
@@ -779,10 +900,13 @@
               document.getElementById('selected-user-lastupdate').textContent = timeAgo(userData.lastSeen);
               document.getElementById('selected-user-speed').textContent = 
                 userData.location?.speed ? `${userData.location.speed} km/j` : '-';
+              document.getElementById('selected-user-accuracy').textContent = 
+                userData.location?.accuracy ? `${userData.location.accuracy}m` : '-';
             }
           }
           
-          const item = document.createElement('div');          item.className = `user-item ${state.selectedUser === userId ? 'active' : ''}`;
+          const item = document.createElement('div');
+          item.className = `user-item ${state.selectedUser === userId ? 'active' : ''}`;
           item.dataset.userid = userId;
           item.onclick = () => selectUser(userId, userData.name);
           
@@ -790,7 +914,7 @@
             <span class="status-dot ${userData.isOnline ? 'online' : 'offline'} ${userData.status === 'emergency' ? 'emergency' : ''}"></span>
             <div class="user-info">
               <strong>${userData.name || 'Unknown'}</strong>
-              <small>${userData.location ? '📍 Ada lokasi' : '⏳ Menunggu lokasi'}</small>
+              <small>${userData.location ? '📍 ' + userData.location.lat.toFixed(2) + ', ' + userData.location.lng.toFixed(2) : '⏳ Menunggu lokasi'}</small>
             </div>
             <div class="user-meta">
               <div>${userData.isOnline ? '🟢' : '🔴'}</div>
@@ -802,15 +926,28 @@
         
         document.getElementById('stat-online').textContent = onlineCount;
         document.getElementById('stat-total').textContent = totalCount;
+        document.getElementById('stat-emergency').textContent = emergencyCount;
+        document.getElementById('stat-moving').textContent = movingCount;
         
-        if (totalCount === 0) {
-          userList.innerHTML = '<small style="color: #666;">Tiada ahli keluarga dalam sistem</small>';
-        }
+        console.log(`✅ Loaded ${totalCount} users, ${onlineCount} online`);      }, (error) => {
+        console.error('❌ Error listening users:', error);
+        document.getElementById('user-list').innerHTML = `
+          <div class="empty-state">
+            <div class="icon">❌</div>
+            <small>Error: ${error.message}</small>
+            <button class="btn btn-sm btn-outline" onclick="location.reload()" style="margin-top: 0.5rem;">🔄 Refresh</button>
+          </div>
+        `;
       });
     }
 
+    document.getElementById('btn-refresh-users').addEventListener('click', () => {
+      toast('🔄 Refreshing...', 'info');
+      location.reload();
+    });
+
     // ================================================================
-    // 🛰️ GPS TRACKING + AUTO CHECKPOINT
+    // 🛰️ GPS TRACKING
     // ================================================================
     async function updateLocation(lat, lng, acc, speed) {
       if (!state.user) return;
@@ -831,7 +968,8 @@
       await update(ref(db, `users/${state.user.uid}`), {
         location: { lat, lng, accuracy: acc, speed, timestamp: Date.now() },
         status: speed > 0.5 ? 'moving' : 'online',
-        lastSeen: Date.now(),        checkpointCount: state.checkpointCounter
+        lastSeen: Date.now(),
+        checkpointCount: state.checkpointCounter
       });
       
       updateRoute(state.user.uid, lat, lng);
@@ -841,7 +979,6 @@
         🎯 Ketepatan: ${acc}m ${speed > 0 ? `• 🚀 ${speed} km/j` : ''}
       `;
     }
-
     function updateCheckpointList() {
       const list = document.getElementById('checkpoint-list');
       const checkpoints = state.checkpoints.get(state.user.uid) || [];
@@ -881,6 +1018,7 @@
     function deg2rad(deg) {
       return deg * (Math.PI/180);
     }
+
     // ================================================================
     // 🎮 GPS BUTTONS
     // ================================================================
@@ -889,8 +1027,7 @@
       
       state.watchId = navigator.geolocation.watchPosition(
         (p) => updateLocation(
-          p.coords.latitude,
-          p.coords.longitude,
+          p.coords.latitude,          p.coords.longitude,
           Math.round(p.coords.accuracy),
           p.coords.speed ? Math.round(p.coords.speed * 3.6 * 10) / 10 : 0
         ),
@@ -930,7 +1067,7 @@
     document.getElementById('btn-sos-family').addEventListener('click', () => { 
       if (confirm('🚨 Butuh bantuan segera?')) sendSOS(); 
     });
-    // Online status
+
     window.addEventListener('online', () => document.getElementById('online-dot').classList.add('online'));
     window.addEventListener('offline', () => document.getElementById('online-dot').classList.remove('online'));
     document.getElementById('online-dot').classList.toggle('online', navigator.onLine);
