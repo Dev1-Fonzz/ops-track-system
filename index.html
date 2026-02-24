@@ -848,87 +848,126 @@
     }
 
     function listenAllUsers() {
-      console.log('👁️ Operator: Listening to all users...');
-      const usersRef = ref(db, 'users');
+  console.log('👁️ Operator: Loading users...');
+  
+  // Show loading state
+  const userList = document.getElementById('user-list');
+  userList.innerHTML = `
+    <div class="empty-state">
+      <div class="icon">⏳</div>
+      <small>Memuatkan data...</small>
+      <div class="loading-spinner" style="width:30px;height:30px;margin:1rem auto;border-color:var(--primary)"></div>
+    </div>
+  `;
+  
+  const usersRef = ref(db, 'users');
+  
+  // Use once() for faster initial load, then onValue for updates
+  get(usersRef).then((snap) => {
+    console.log('📊 Initial load complete:', snap.exists() ? 'Has data' : 'Empty');
+    updateUsersList(snap);
+    
+    // Then listen for real-time updates
+    onValue(usersRef, (updateSnap) => {
+      console.log('🔄 Real-time update received');
+      updateUsersList(updateSnap);
+    }, (error) => {
+      console.error('❌ Real-time listener error:', error);
+    });
+    
+  }).catch((error) => {
+    console.error('❌ Initial load error:', error);
+    userList.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">❌</div>
+        <small>Gagal load data: ${error.message}</small>
+        <button class="btn btn-sm btn-outline" onclick="location.reload()" style="margin-top:0.5rem">🔄 Cuba Lagi</button>
+      </div>
+    `;
+  });
+}
+
+function updateUsersList(snap) {
+  const data = snap.val();
+  const userList = document.getElementById('user-list');
+  userList.innerHTML = '';
+  
+  if (!data) {
+    userList.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">👥</div>
+        <small>Tiada ahli keluarga dalam sistem</small>        <p style="margin-top:0.5rem;font-size:0.75rem;color:#999">
+          Minta ahli keluarga login dulu untuk share lokasi
+        </p>
+      </div>
+    `;
+    updateStats(0, 0, 0, 0);
+    return;
+  }
+  
+  state.allUsers.clear();
+  let onlineCount = 0, totalCount = 0, emergencyCount = 0, movingCount = 0;
+  
+  Object.entries(data).forEach(([userId, userData]) => {
+    totalCount++;
+    state.allUsers.set(userId, userData);
+    
+    if (userData.isOnline) onlineCount++;
+    if (userData.status === 'emergency') emergencyCount++;
+    if (userData.status === 'moving') movingCount++;
+    
+    if (userData.location?.lat && userData.location?.lng) {
+      updateUserMarker(
+        userId,
+        userData.location.lat,
+        userData.location.lng,
+        userData.isOnline ? (userData.status || 'online') : 'offline',
+        userData.name || 'Unknown'
+      );
       
-      onValue(usersRef, (snap) => {
-        console.log('📊 Users snapshot:', snap.exists() ? 'Has data' : 'Empty');
-        const data = snap.val();
+      if (state.selectedUser === userId) {
+        updateRoute(userId, userData.location.lat, userData.location.lng);
+        showUserCheckpoints(userId, userData.name);
         
-        const userList = document.getElementById('user-list');
-        userList.innerHTML = '';
-        
-        if (!data) {
-          userList.innerHTML = `
-            <div class="empty-state">
-              <div class="icon">👥</div>
-              <small>Tiada ahli keluarga dalam sistem</small>
-            </div>
-          `;
-          document.getElementById('stat-online').textContent = '0';
-          document.getElementById('stat-total').textContent = '0';
-          document.getElementById('stat-emergency').textContent = '0';
-          document.getElementById('stat-moving').textContent = '0';
-          return;
-        }
-        
-        state.allUsers.clear();
-        let onlineCount = 0, totalCount = 0, emergencyCount = 0, movingCount = 0;
-        
-        Object.entries(data).forEach(([userId, userData]) => {
-          totalCount++;
-          state.allUsers.set(userId, userData);
-          
-          if (userData.isOnline) onlineCount++;
-          if (userData.status === 'emergency') emergencyCount++;          if (userData.status === 'moving') movingCount++;
-          
-          if (userData.location?.lat && userData.location?.lng) {
-            updateUserMarker(
-              userId,
-              userData.location.lat,
-              userData.location.lng,
-              userData.isOnline ? (userData.status || 'online') : 'offline',
-              userData.name || 'Unknown'
-            );
-            
-            if (state.selectedUser === userId) {
-              updateRoute(userId, userData.location.lat, userData.location.lng);
-              showUserCheckpoints(userId, userData.name);
-              
-              document.getElementById('selected-user-status').textContent = 
-                `${userData.isOnline ? '🟢 Online' : '🔴 Offline'} • ${userData.status || '-'}`;
-              document.getElementById('selected-user-lastupdate').textContent = timeAgo(userData.lastSeen);
-              document.getElementById('selected-user-speed').textContent = 
-                userData.location?.speed ? `${userData.location.speed} km/j` : '-';
-              document.getElementById('selected-user-accuracy').textContent = 
-                userData.location?.accuracy ? `${userData.location.accuracy}m` : '-';
-            }
-          }
-          
-          const item = document.createElement('div');
-          item.className = `user-item ${state.selectedUser === userId ? 'active' : ''}`;
-          item.dataset.userid = userId;
-          item.onclick = () => selectUser(userId, userData.name);
-          
-          item.innerHTML = `
-            <span class="status-dot ${userData.isOnline ? 'online' : 'offline'} ${userData.status === 'emergency' ? 'emergency' : ''}"></span>
-            <div class="user-info">
-              <strong>${userData.name || 'Unknown'}</strong>
-              <small>${userData.location ? '📍 ' + userData.location.lat.toFixed(2) + ', ' + userData.location.lng.toFixed(2) : '⏳ Menunggu lokasi'}</small>
-            </div>
-            <div class="user-meta">
-              <div>${userData.isOnline ? '🟢' : '🔴'}</div>
-              <div>${timeAgo(userData.lastSeen)}</div>
-            </div>
-          `;
-          userList.appendChild(item);
-        });
-        
-        document.getElementById('stat-online').textContent = onlineCount;
-        document.getElementById('stat-total').textContent = totalCount;
-        document.getElementById('stat-emergency').textContent = emergencyCount;
-        document.getElementById('stat-moving').textContent = movingCount;
-        
+        document.getElementById('selected-user-status').textContent = 
+          `${userData.isOnline ? '🟢 Online' : '🔴 Offline'} • ${userData.status || '-'}`;
+        document.getElementById('selected-user-lastupdate').textContent = timeAgo(userData.lastSeen);
+        document.getElementById('selected-user-speed').textContent = 
+          userData.location?.speed ? `${userData.location.speed} km/j` : '-';
+        document.getElementById('selected-user-accuracy').textContent = 
+          userData.location?.accuracy ? `${userData.location.accuracy}m` : '-';
+      }
+    }
+    
+    const item = document.createElement('div');
+    item.className = `user-item ${state.selectedUser === userId ? 'active' : ''}`;
+    item.dataset.userid = userId;
+    item.onclick = () => selectUser(userId, userData.name);
+    
+    item.innerHTML = `
+      <span class="status-dot ${userData.isOnline ? 'online' : 'offline'} ${userData.status === 'emergency' ? 'emergency' : ''}"></span>      <div class="user-info">
+        <strong>${userData.name || 'Unknown'}</strong>
+        <small>${userData.location ? '📍 Ada lokasi' : '⏳ Menunggu lokasi'}</small>
+      </div>
+      <div class="user-meta">
+        <div>${userData.isOnline ? '🟢' : '🔴'}</div>
+        <div>${timeAgo(userData.lastSeen)}</div>
+      </div>
+    `;
+    userList.appendChild(item);
+  });
+  
+  updateStats(onlineCount, totalCount, emergencyCount, movingCount);
+  console.log(`✅ Loaded ${totalCount} users in ${Date.now()}ms`);
+}
+
+function updateStats(online, total, emergency, moving) {
+  document.getElementById('stat-online').textContent = online;
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-emergency').textContent = emergency;
+  document.getElementById('stat-moving').textContent = moving;
+}
+    
         console.log(`✅ Loaded ${totalCount} users, ${onlineCount} online`);      }, (error) => {
         console.error('❌ Error listening users:', error);
         document.getElementById('user-list').innerHTML = `
