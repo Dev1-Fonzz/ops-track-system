@@ -2,256 +2,92 @@
 <html lang="ms">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#1a73e8">
-  <title>FamilyTrack • Pemantauan Lokasi</title>
-  
-  <!-- 🗺️ Leaflet Map (FREE - No Token) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FamilyTrack • Debug Version</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  
   <style>
-    :root {
-      --bg: #ffffff; --card: #f8f9fa; --text: #202124; --border: #dadce0;
-      --primary: #1a73e8; --success: #34a853; --warning: #f9ab00;
-      --error: #ea4335; --emergency: #d93025;
-    }
-    [data-theme="dark"] {
-      --bg: #1a1a1a; --card: #2d2d2d; --text: #e8eaed; --border: #3c4043;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
-    }
-    .hidden { display: none !important; }
-
-    /* Login Screen */
-    #login-screen {
-      display: flex; align-items: center; justify-content: center;
-      height: 100vh; background: linear-gradient(135deg, var(--primary), #0d47a1);
-    }
-    .login-box {
-      background: white; padding: 2rem; border-radius: 16px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.2); text-align: center;
-      max-width: 400px; width: 90%;
-    }
-    .login-box h1 { color: var(--primary); margin-bottom: 0.5rem; }
-    .login-box p { color: #666; margin-bottom: 1.5rem; }
-    .role-btn {
-      width: 100%; padding: 1rem; margin-bottom: 0.75rem;
-      border: 2px solid var(--border); border-radius: 12px;
-      background: white; cursor: pointer; transition: all 0.2s;
-      display: flex; align-items: center; gap: 0.75rem;
-    }
-    .role-btn:hover { border-color: var(--primary); background: #e8f0fe; }
-    .role-btn.selected { border-color: var(--primary); background: #e8f0fe; }
-    .role-btn .icon { font-size: 1.5rem; }
-    .role-btn .text { text-align: left; }    .role-btn .text strong { display: block; color: var(--text); }
-    .role-btn .text small { color: #666; font-size: 0.8rem; }
-
-    /* Header */
-    header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 0.75rem 1rem; background: var(--card);
-      border-bottom: 1px solid var(--border);
-    }
-    .logo { font-size: 1.25rem; font-weight: 700; color: var(--primary); }
-    .header-right { display: flex; align-items: center; gap: 0.75rem; }
-    #online-dot {
-      width: 10px; height: 10px; border-radius: 50%; background: var(--error);
-    }
-    #online-dot.online { background: var(--success); }
-
-    /* Map */
-    #map { height: calc(100vh - 60px); width: 100%; }
-
-    /* Panels */
-    .panel {
-      position: absolute; background: var(--card); padding: 1rem;
-      border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      z-index: 1000; max-width: 320px; width: calc(100% - 2rem);
-      max-height: 60vh; overflow-y: auto;
-    }
-    .bottom-left { bottom: 1rem; left: 1rem; }
-    .bottom-right { bottom: 1rem; right: 1rem; }
-    .top-right { top: 1rem; right: 1rem; }
-
-    /* Buttons */
-    .btn {
-      padding: 0.6rem 1.2rem; border: none; border-radius: 8px;
-      background: var(--primary); color: white; font-weight: 600;
-      cursor: pointer; transition: all 0.2s; font-size: 0.9rem;
-    }
-    .btn:hover { opacity: 0.9; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-success { background: var(--success); }
-    .btn-warning { background: var(--warning); color: #202124; }
-    .btn-emergency {
-      background: var(--emergency);
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(217,48,37,0.7); }
-      50% { box-shadow: 0 0 0 10px rgba(217,48,37,0); }
-    }
-    .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
-    .btn-block { width: 100%; }
-    /* Location Display */
-    #location-display {
-      font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.8rem;
-      background: rgba(0,0,0,0.05); padding: 0.5rem; border-radius: 6px;
-      margin-bottom: 0.75rem;
-    }
-
-    /* User List */
-    .user-list { margin-top: 0.5rem; }
-    .user-item {
-      display: flex; align-items: center; gap: 0.5rem;
-      padding: 0.5rem; background: var(--bg);
-      border-radius: 8px; margin-bottom: 0.5rem;
-      cursor: pointer; border: 1px solid var(--border);
-    }
-    .user-item:hover { border-color: var(--primary); }
-    .user-item.active { border-color: var(--primary); background: #e8f0fe; }
-    .status-dot {
-      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-    }
-    .status-dot.online { background: var(--success); }
-    .status-dot.offline { background: #999; }
-    .status-dot.emergency { background: var(--emergency); animation: pulse 1s infinite; }
-    .user-info { flex: 1; min-width: 0; }
-    .user-info strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .user-info small { color: #666; font-size: 0.75rem; }
-    .user-time { font-size: 0.7rem; color: #999; }
-
-    /* Toast */
-    #toast-container {
-      position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
-      z-index: 2000; display: flex; flex-direction: column; gap: 0.5rem;
-    }
-    .toast {
-      padding: 0.75rem 1.5rem; border-radius: 8px; color: white;
-      font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      animation: slideUp 0.3s ease;
-    }
-    @keyframes slideUp {
-      from { transform: translateY(20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-    .toast-success { background: var(--success); }
-    .toast-error { background: var(--error); }
-    .toast-warning { background: var(--warning); color: #202124; }
-    .toast-emergency { background: var(--emergency); }
-    .toast-info { background: var(--primary); }
-
-    /* Responsive */    @media (max-width: 768px) {
-      .panel { width: calc(100% - 1.5rem); }
-      .login-box { padding: 1.5rem; }
-    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:system-ui,sans-serif;height:100vh;overflow:hidden}
+    .hidden{display:none!important}
+    #login{display:flex;align-items:center;justify-content:center;height:100vh;background:linear-gradient(135deg,#1a73e8,#0d47a1)}
+    .login-box{background:white;padding:2rem;border-radius:16px;text-align:center;max-width:400px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.2)}
+    .login-box h1{color:#1a73e8;margin-bottom:0.5rem}
+    .role-btn{width:100%;padding:1rem;margin:0.5rem 0;border:2px solid #dadce0;border-radius:12px;background:white;cursor:pointer}
+    .role-btn.selected{border-color:#1a73e8;background:#e8f0fe}
+    .btn{padding:0.6rem 1.2rem;border:none;border-radius:8px;background:#1a73e8;color:white;font-weight:600;cursor:pointer;width:100%;margin-top:1rem}
+    .btn-success{background:#34a853}
+    .btn-warning{background:#f9ab00;color:#202124}
+    .btn-emergency{background:#d93025;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(217,48,37,0.7)}50%{box-shadow:0 0 0 10px rgba(217,48,37,0)}}
+    #map{height:calc(100vh - 60px);width:100%}
+    header{display:flex;justify-content:space-between;padding:0.75rem 1rem;background:#f8f9fa;border-bottom:1px solid #dadce0}
+    .panel{position:absolute;background:white;padding:1rem;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:1000;max-width:320px;width:calc(100%-2rem)}
+    .bottom-left{bottom:1rem;left:1rem}
+    .top-right{top:1rem;right:1rem}
+    .user-list{max-height:300px;overflow-y:auto}
+    .user-item{display:flex;align-items:center;gap:0.5rem;padding:0.5rem;margin:0.25rem 0;background:#f8f9fa;border-radius:8px;cursor:pointer}
+    .user-item:hover{background:#e8f0fe}
+    .status-dot{width:10px;height:10px;border-radius:50%}
+    .status-dot.online{background:#34a853}
+    .status-dot.offline{background:#999}
+    .status-dot.emergency{background:#d93025;animation:pulse 1s infinite}
+    #loc{font-family:monospace;font-size:0.8rem;background:#f0f0f0;padding:0.5rem;border-radius:6px;margin:0.5rem 0}
+    #toast{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);z-index:2000}
+    .toast{padding:0.75rem 1.5rem;border-radius:8px;color:white;margin-bottom:0.5rem}
+    .toast-success{background:#34a853}
+    .toast-error{background:#ea4335}
+    .toast-info{background:#1a73e8}
+    .toast-emergency{background:#d93025}
   </style>
 </head>
-<body data-theme="light">
+<body>
 
-  <!-- 🔐 Login Screen -->
-  <div id="login-screen">
+  <div id="login">
     <div class="login-box">
       <h1>👨‍👩‍👧‍👦 FamilyTrack</h1>
-      <p>Pemantauan Lokasi Keluarga</p>
-      
-      <div class="role-btn selected" onclick="selectRole('user', this)">
-        <span class="icon">📍</span>
-        <div class="text">
-          <strong>Ahli Keluarga</strong>
-          <small>Share lokasi saya</small>
-        </div>
+      <p style="color:#666;margin:1rem 0">Pemantauan Lokasi Keluarga</p>
+            <div class="role-btn selected" onclick="selectRole('user',this)">
+        📍 <strong>Ahli Keluarga</strong><br><small>Share lokasi saya</small>
+      </div>
+      <div class="role-btn" onclick="selectRole('operator',this)">
+        👁️ <strong>Pemantau</strong><br><small>Lihat semua lokasi</small>
       </div>
       
-      <div class="role-btn" onclick="selectRole('operator', this)">
-        <span class="icon">👁️</span>
-        <div class="text">
-          <strong>Pemantau (Operator)</strong>
-          <small>Lihat semua lokasi keluarga</small>
-        </div>
-      </div>
-      
-      <button id="btn-login" class="btn btn-block" style="padding: 1rem; margin-top: 1rem; font-size: 1rem;">
-        🚀 MULA
-      </button>
-      
-      <p style="margin-top: 1rem; font-size: 0.75rem; color: #999;">
-        ✅ Percuma • GPS Real • Tanpa Setup Rumit
-      </p>
+      <button class="btn" onclick="login()">🚀 MULA</button>
+      <p id="debug-status" style="margin-top:1rem;font-size:0.75rem;color:#999"></p>
     </div>
   </div>
 
-  <!-- 🗺️ Dashboard -->
   <div id="dashboard" class="hidden">
     <header>
-      <div class="logo">👨‍👩‍👧‍👦 FamilyTrack</div>
-      <div class="header-right">
-        <div id="online-dot" title="Status Internet"></div>
-        <button id="btn-logout" class="btn btn-sm btn-warning">🚪</button>
-      </div>
+      <strong>👨‍👩‍👧‍👦 FamilyTrack</strong>
+      <button class="btn btn-warning" style="width:auto;padding:0.4rem 0.8rem" onclick="logout()">🚪 Keluar</button>
     </header>
     <div id="map"></div>
-
-    <!-- User Panel (Untuk User Share Lokasi) -->
-    <div class="panel bottom-left" id="user-panel">
+    
+    <div class="panel bottom-left hidden" id="user-panel">
       <h4>📍 Lokasi Anda</h4>
-      <div id="location-display">Menunggu GPS...</div>
-      
-      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
-        <button id="btn-start" class="btn btn-success btn-sm" style="flex: 1;">▶ Share</button>
-        <button id="btn-stop" class="btn btn-warning btn-sm" style="flex: 1;" disabled>⏹ Stop</button>
-      </div>
-
-      <div style="background: var(--bg); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border);">
-        <small style="color: #666;">
-          🔒 Lokasi hanya boleh dilihat oleh pemantau<br>
-          📡 Update setiap 8 saat bila bergerak
-        </small>
-      </div>
-
-      <button id="btn-sos-user" class="btn btn-emergency btn-block" style="margin-top: 0.75rem; padding: 0.75rem;">
-        🚨 SOS - Butuh Bantuan!
-      </button>
+      <div id="loc">Menunggu GPS...</div>
+      <button class="btn btn-success" onclick="startTrack()">▶ Share Lokasi</button>
+      <button class="btn btn-warning" onclick="stopTrack()" disabled>⏹ Stop</button>
+      <button class="btn btn-emergency" onclick="sendSOS()" style="margin-top:0.5rem">🚨 SOS</button>
     </div>
-
-    <!-- Operator Panel (Untuk Pemantau) -->
+    
     <div class="panel top-right hidden" id="operator-panel">
       <h4>👥 Ahli Keluarga</h4>
-      <div id="user-list" class="user-list">
-        <small style="color: #666;">Memuatkan...</small>
-      </div>
-      <div style="margin-top: 0.75rem; padding: 0.5rem; background: #e8f0fe; border-radius: 6px;">
-        <small style="color: #1a73e8;">
-          👁️ Klik nama untuk lihat lokasi & route perjalanan
-        </small>
-      </div>
-    </div>
-
-    <!-- SOS Button (Semua) -->
-    <div class="panel bottom-right">
-      <button id="btn-sos" class="btn btn-emergency btn-block" style="padding: 1rem;">
-        🚨 SOS KECEMASAN
-      </button>
-      <p style="margin-top: 0.5rem; font-size: 0.7rem; color: #666; text-align: center;">
-        Hantar alert kepada pemantau
-      </p>
+      <div id="user-list" class="user-list"><small>Memuatkan...</small></div>
     </div>
   </div>
 
-  <div id="toast-container"></div>
-  <!-- ⚡ Firebase + App Logic -->
+  <div id="toast"></div>
+
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
     import { getDatabase, ref, set, update, onValue, onDisconnect, push } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-database.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 
-    // ================================================================
     // 🔧 FIREBASE CONFIG
-    // ================================================================
     const firebaseConfig = {
       apiKey: "AIzaSyABchyom-zF_ZWuV7HWiDLWBaopBQ1TYxk",
       authDomain: "ops-track-system.firebaseapp.com",
@@ -261,343 +97,171 @@
       messagingSenderId: "706189064777",
       appId: "1:706189064777:web:03f71ed77e5c3e1f265d98"
     };
-
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const auth = getAuth(app);
 
-    // ================================================================
-    // 🌐 APP STATE
-    // ================================================================
-    const state = {
-      user: null,
-      role: 'user',
-      map: null,
-      markers: new Map(),
-      polylines: new Map(),
-      routes: new Map(),
-      watchId: null,
-      tracking: false,
-      pos: null,
-      selectedUser: null
-    };
+    const state = { user: null, role: 'user', map: null, markers: new Map(), watchId: null, pos: null };
+    window.selectRole = (role, el) => { state.role = role; document.querySelectorAll('.role-btn').forEach(b=>b.classList.remove('selected')); el.classList.add('selected'); };
 
-    // Expose for global access
-    window.selectRole = (role, el) => {
-      state.role = role;
-      document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('selected'));
-      el.classList.add('selected');
-    };
-
-    // ================================================================
-    // 🔐 AUTH
-    // ================================================================
-    onAuthStateChanged(auth, async (user) => {      if (user) {
+    // 🔐 AUTH WITH DEBUG
+    onAuthStateChanged(auth, async (user) => {
+      console.log('🔐 Auth State:', user ? user.uid : 'No user');
+      document.getElementById('debug-status').textContent = user ? `UID: ${user.uid.slice(0,8)}...` : 'Not logged in';
+      
+      if (user) {
         state.user = user;
-        const displayName = state.role === 'operator' ? `Pemantau_${user.uid.slice(0,4)}` : `Ahli_${user.uid.slice(0,4)}`;
+        const name = state.role === 'operator' ? `Pemantau_${user.uid.slice(0,4)}` : `Ahli_${user.uid.slice(0,4)}`;
         
-        await update(ref(db, `users/${user.uid}`), {
-          name: displayName,
-          role: state.role,
-          isOnline: true,
-          lastSeen: Date.now()
-        });
+        try {
+          await update(ref(db, `users/${user.uid}`), {
+            name, role: state.role, isOnline: true, lastSeen: Date.now()
+          });
+          console.log('✅ User data written to Firebase');
+        } catch (e) {
+          console.error('❌ Failed to write user data:', e);
+          toast('❌ Gagal tulis data: ' + e.message, 'error');
+        }
         
         onDisconnect(ref(db, `users/${user.uid}/isOnline`)).set(false);
-        
         showDashboard();
         initMap();
         
         if (state.role === 'user') {
-          listenOwnData();
+          console.log('📡 Listening to own data...');
+          onValue(ref(db, `users/${user.uid}`), (snap) => {
+            const data = snap.val();
+            console.log('📍 Own location update:', data?.location);
+            if (data?.location?.lat && data?.location?.lng) {
+              updateMarker(user.uid, data.location.lat, data.location.lng, data.status||'online', data.name||'Saya', true);
+            }
+          });
         } else {
-          listenAllUsers();
+          console.log('👁️ Listening to all users...');
+          onValue(ref(db, 'users'), (snap) => {
+            const data = snap.val();
+            console.log('👥 All users:', data);
+            if (!data) {
+              document.getElementById('user-list').innerHTML = '<small>Tiada data</small>';
+              return;
+            }
+            const list = document.getElementById('user-list');            list.innerHTML = '';
+            Object.entries(data).forEach(([uid, u]) => {
+              if (u.role !== 'user') return;
+              if (u.location?.lat && u.location?.lng) {
+                updateMarker(uid, u.location.lat, u.location.lng, u.isOnline?'online':'offline', u.name||'Unknown');
+              }
+              const item = document.createElement('div');
+              item.className = 'user-item';
+              item.innerHTML = `<span class="status-dot ${u.isOnline?'online':'offline'}"></span><div><strong>${u.name||'Unknown'}</strong><br><small>${u.location?'📍 Ada lokasi':'⏳ Tiada lokasi'}</small></div>`;
+              item.onclick = () => { state.map.flyTo([u.location?.lat||3.139, u.location?.lng||101.6869], 15); };
+              list.appendChild(item);
+            });
+          }, (e) => {
+            console.error('❌ Error listening users:', e);
+            toast('❌ Error: ' + e.message, 'error');
+          });
         }
-        
         toast('✅ Berjaya masuk', 'success');
       } else {
-        showLogin();
+        document.getElementById('login').classList.remove('hidden');
+        document.getElementById('dashboard').classList.add('hidden');
       }
     });
 
-    document.getElementById('btn-login').onclick = async () => {
+    window.login = async () => {
+      console.log('🔐 Attempting login...');
       try {
         await signInAnonymously(auth);
+        console.log('✅ Login successful');
       } catch (e) {
-        const msg = e.code === 'auth/operation-not-allowed' 
-          ? '⚠️ Sila enable "Anonymous Auth" di Firebase Console'
-          : e.message;
-        toast(msg, 'error');
-        console.error(e);
+        console.error('❌ Login failed:', e);
+        toast('❌ ' + (e.code==='auth/operation-not-allowed'?'Enable Anonymous Auth di Firebase!':e.message), 'error');
       }
     };
 
-    document.getElementById('btn-logout').onclick = async () => {
+    window.logout = async () => {
       if (state.watchId) navigator.geolocation.clearWatch(state.watchId);
       await signOut(auth);
       location.reload();
     };
 
-    // ================================================================
-    // 🗺️ MAP (Leaflet - FREE)
-    // ================================================================
-    function initMap() {      state.map = L.map('map', { zoomControl: false }).setView([3.1390, 101.6869], 11);
-      
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap', maxZoom: 19
-      }).addTo(state.map);
-      
-      L.control.zoom({ position: 'topright' }).addTo(state.map);
-      L.control.locate({ position: 'topright', drawCircle: true, drawMarker: true }).addTo(state.map);
+    function showDashboard() {
+      document.getElementById('login').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      document.getElementById('user-panel').classList.toggle('hidden', state.role==='operator');
+      document.getElementById('operator-panel').classList.toggle('hidden', state.role==='user');
     }
 
-    function updateUserMarker(userId, lat, lng, status, name, isSelf = false) {
-      const colors = { 
-        online: '#34a853', 
-        offline: '#999999', 
-        emergency: '#ea4335',
-        moving: '#1a73e8'
-      };
-      
-      if (!state.markers.has(userId)) {
-        const m = L.circleMarker([lat, lng], {
-          radius: isSelf ? 12 : 8,
-          fillColor: colors[status] || '#1a73e8',
-          color: '#fff',
-          weight: 3,
-          fillOpacity: 0.9
-        }).addTo(state.map);
-        
-        m.bindPopup(`<b>${name}</b><br>Status: ${status}<br>${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-        
-        if (state.role === 'operator') {
-          m.on('click', () => selectUser(userId, name));
-        }
-        
-        state.markers.set(userId, m);
+    function initMap() {
+      state.map = L.map('map').setView([3.1390, 101.6869], 11);      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(state.map);
+    }
+
+    function updateMarker(uid, lat, lng, status, name, isSelf=false) {
+      const colors = { online:'#34a853', offline:'#999', emergency:'#ea4335' };
+      if (!state.markers.has(uid)) {
+        const m = L.circleMarker([lat,lng], { radius:isSelf?12:8, fillColor:colors[status]||'#1a73e8', color:'#fff', weight:3 }).addTo(state.map);
+        m.bindPopup(`<b>${name}</b><br>${status}`);
+        state.markers.set(uid, m);
+        console.log('📍 Marker created:', uid);
       } else {
-        const m = state.markers.get(userId);
-        m.setLatLng([lat, lng]);
-        m.setStyle({ fillColor: colors[status] || '#1a73e8', radius: isSelf ? 12 : 8 });
-        m.setPopupContent(`<b>${name}</b><br>Status: ${status}<br>${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+        const m = state.markers.get(uid);
+        m.setLatLng([lat,lng]);
+        m.setStyle({ fillColor: colors[status]||'#1a73e8' });
+        console.log('📍 Marker updated:', uid);
       }
     }
 
-    function updateRoute(userId, lat, lng) {
-      if (!state.routes.has(userId)) state.routes.set(userId, []);
-      const route = state.routes.get(userId);
-      route.push([lng, lat]);
-      if (route.length > 500) route.shift();
-      
-      if (state.polylines.has(userId)) state.map.removeLayer(state.polylines.get(userId));
-            if (route.length > 1) {
-        const polyline = L.polyline(route.map(p => [p[1], p[0]]), {
-          color: state.selectedUser === userId ? '#ea4335' : '#1a73e8',
-          weight: state.selectedUser === userId ? 5 : 3,
-          opacity: 0.7,
-          lineCap: 'round'
-        }).addTo(state.map);
-        state.polylines.set(userId, polyline);
-      }
-    }
-
-    function selectUser(userId, name) {
-      state.selectedUser = userId;
-      document.querySelectorAll('.user-item').forEach(el => el.classList.remove('active'));
-      const activeEl = document.querySelector(`[data-userid="${userId}"]`);
-      if (activeEl) activeEl.classList.add('active');
-      
-      const marker = state.markers.get(userId);
-      if (marker) {
-        state.map.flyTo(marker.getLatLng(), 15, { duration: 1.5 });
-        marker.openPopup();
-      }
-      
-      toast(`📍 Melihat: ${name}`, 'info');
-    }
-
-    function clearAllRoutes() {
-      state.polylines.forEach(p => state.map.removeLayer(p));
-      state.polylines.clear();
-      state.routes.clear();
-    }
-
-    // ================================================================
-    // 📡 DATA LISTENERS
-    // ================================================================
-    function listenOwnData() {
-      onValue(ref(db, `users/${state.user.uid}`), (snap) => {
-        const data = snap.val();
-        if (data?.location?.lat && data?.location?.lng) {
-          updateUserMarker(
-            state.user.uid,
-            data.location.lat,
-            data.location.lng,
-            data.status || 'online',
-            data.name || 'Saya',
-            true
-          );
-          updateRoute(state.user.uid, data.location.lat, data.location.lng);
-        }
-      });    }
-
-    function listenAllUsers() {
-      onValue(ref(db, 'users'), (snap) => {
-        const data = snap.val();
-        if (!data) return;
-        
-        const userList = document.getElementById('user-list');
-        userList.innerHTML = '';
-        
-        let hasUsers = false;
-        Object.entries(data).forEach(([userId, userData]) => {
-          if (userData.role !== 'user') return;
-          hasUsers = true;
-          
-          // Update marker on map
-          if (userData.location?.lat && userData.location?.lng) {
-            updateUserMarker(
-              userId,
-              userData.location.lat,
-              userData.location.lng,
-              userData.isOnline ? (userData.status || 'online') : 'offline',
-              userData.name || 'Unknown'
-            );
-            
-            // Show route if selected
-            if (state.selectedUser === userId) {
-              updateRoute(userId, userData.location.lat, userData.location.lng);
-            }
-          }
-          
-          // Add to list
-          const item = document.createElement('div');
-          item.className = `user-item ${state.selectedUser === userId ? 'active' : ''}`;
-          item.dataset.userid = userId;
-          item.onclick = () => selectUser(userId, userData.name);
-          
-          const lastSeen = userData.lastSeen ? timeAgo(userData.lastSeen) : '-';
-          item.innerHTML = `
-            <span class="status-dot ${userData.isOnline ? 'online' : 'offline'} ${userData.status === 'emergency' ? 'emergency' : ''}"></span>
-            <div class="user-info">
-              <strong>${userData.name || 'Unknown'}</strong>
-              <small>${userData.location ? '📍 Ada lokasi' : '⏳ Menunggu lokasi'}</small>
-            </div>
-            <span class="user-time">${lastSeen}</span>
-          `;
-          userList.appendChild(item);
-        });
-        
-        if (!hasUsers) {          userList.innerHTML = '<small style="color: #666;">Tiada ahli keluarga dalam sistem</small>';
-        }
-      });
-    }
-
-    // ================================================================
-    // 🛰️ GPS TRACKING
-    // ================================================================
     async function updateLocation(lat, lng, acc, speed) {
       if (!state.user) return;
       state.pos = { lat, lng, acc, speed, ts: Date.now() };
-      
-      await update(ref(db, `users/${state.user.uid}`), {
-        location: { lat, lng, accuracy: acc, speed, timestamp: Date.now() },
-        status: speed > 0.5 ? 'moving' : 'online',
-        lastSeen: Date.now()
-      });
-      
-      updateRoute(state.user.uid, lat, lng);
-      
-      document.getElementById('location-display').innerHTML = `
-        📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}<br>
-        🎯 Ketepatan: ${acc}m ${speed > 0 ? `• 🚀 ${speed} km/j` : ''}
-      `;
+      try {
+        await update(ref(db, `users/${state.user.uid}`), {
+          location: { lat, lng, accuracy: acc, speed, timestamp: Date.now() },
+          status: speed > 0.5 ? 'moving' : 'online',
+          lastSeen: Date.now()
+        });
+        console.log('✅ Location sent to Firebase:', lat, lng);
+        document.getElementById('loc').innerHTML = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}<br>🎯 ${acc}m`;
+        updateMarker(state.user.uid, lat, lng, speed>0.5?'moving':'online', 'Saya', true);
+      } catch (e) {
+        console.error('❌ Failed to update location:', e);
+        toast('❌ Gagal update lokasi: ' + e.message, 'error');
+      }
     }
 
-    document.getElementById('btn-start').onclick = () => {
+    window.startTrack = () => {
       if (!navigator.geolocation) return toast('❌ GPS tidak disokong', 'error');
-      
       state.watchId = navigator.geolocation.watchPosition(
-        (p) => updateLocation(
-          p.coords.latitude,
-          p.coords.longitude,
-          Math.round(p.coords.accuracy),
-          p.coords.speed ? Math.round(p.coords.speed * 3.6 * 10) / 10 : 0
-        ),
-        (e) => toast('⚠️ GPS: ' + e.message, 'warning'),
+        p => updateLocation(p.coords.latitude, p.coords.longitude, Math.round(p.coords.accuracy), p.coords.speed?Math.round(p.coords.speed*3.6*10)/10:0),
+        e => { console.warn('⚠️ GPS error:', e); toast('⚠️ GPS: '+e.message, 'warning'); },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
-      
-      state.tracking = true;
-      document.getElementById('btn-start').disabled = true;
-      document.getElementById('btn-stop').disabled = false;
-      toast('📡 Lokasi sedang dikongsi', 'success');
+      document.querySelector('#user-panel .btn-success').disabled = true;
+      document.querySelector('#user-panel .btn-warning').disabled = false;
+      toast('📡 Lokasi dikongsi', 'success');
     };
 
-    document.getElementById('btn-stop').onclick = () => {
-      if (state.watchId) navigator.geolocation.clearWatch(state.watchId);
-      state.tracking = false;
-      document.getElementById('btn-start').disabled = false;      document.getElementById('btn-stop').disabled = true;
-      toast('⏹ Kongsi lokasi dihentikan', 'info');
+    window.stopTrack = () => {
+      if (state.watchId) navigator.geolocation.clearWatch(state.watchId);      document.querySelector('#user-panel .btn-success').disabled = false;
+      document.querySelector('#user-panel .btn-warning').disabled = true;
+      toast('⏹ Stop', 'info');
     };
 
-    // ================================================================
-    // 🚨 SOS
-    // ================================================================
-    async function sendSOS() {
-      if (!state.user) return;
-      await push(ref(db, 'alerts'), {
-        userId: state.user.uid,
-        location: state.pos,
-        timestamp: Date.now(),
-        acknowledged: false
-      });
+    window.sendSOS = async () => {
+      if (!confirm('🚨 Hantar SOS?')) return;
+      await push(ref(db, 'alerts'), { userId: state.user.uid, location: state.pos, timestamp: Date.now() });
       await update(ref(db, `users/${state.user.uid}`), { status: 'emergency' });
-      toast('🚨 SOS DIHANTAR! Pemantau akan diberitahu', 'emergency');
-    }
-
-    document.getElementById('btn-sos').onclick = () => {
-      if (confirm('🚨 Hantar alert kecemasan?')) sendSOS();
-    };
-    document.getElementById('btn-sos-user').onclick = () => {
-      if (confirm('🚨 Butuh bantuan segera?')) sendSOS();
+      toast('🚨 SOS DIHANTAR!', 'emergency');
     };
 
-    // ================================================================
-    // 🎨 UI FUNCTIONS
-    // ================================================================
-    function showLogin() {
-      document.getElementById('login-screen').classList.remove('hidden');
-      document.getElementById('dashboard').classList.add('hidden');
-    }
-
-    function showDashboard() {
-      document.getElementById('login-screen').classList.add('hidden');
-      document.getElementById('dashboard').classList.remove('hidden');
-      
-      document.getElementById('user-panel').classList.toggle('hidden', state.role === 'operator');
-      document.getElementById('operator-panel').classList.toggle('hidden', state.role === 'user');
-    }
-
-    function toast(msg, type = 'info') {
+    function toast(msg, type='info') {
       const t = document.createElement('div');
       t.className = `toast toast-${type}`;
       t.textContent = msg;
-      document.getElementById('toast-container').appendChild(t);
-      setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 4000);
+      document.getElementById('toast').appendChild(t);
+      setTimeout(()=>t.remove(), 4000);
     }
-    function timeAgo(timestamp) {
-      const seconds = Math.floor((Date.now() - timestamp) / 1000);
-      if (seconds < 60) return 'Baru sekarang';
-      if (seconds < 3600) return `${Math.floor(seconds / 60)}m lalu`;
-      if (seconds < 86400) return `${Math.floor(seconds / 3600)}j lalu`;
-      return `${Math.floor(seconds / 86400)}h lalu`;
-    }
-
-    // Online status indicator
-    window.addEventListener('online', () => document.getElementById('online-dot').classList.add('online'));
-    window.addEventListener('offline', () => document.getElementById('online-dot').classList.remove('online'));
-    document.getElementById('online-dot').classList.toggle('online', navigator.onLine);
   </script>
 </body>
 </html>
