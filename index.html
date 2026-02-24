@@ -2,584 +2,504 @@
 <html lang="ms" data-theme="light">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="description" content="OpsTrack - Sistem Penjejakan Operator (Leaflet Version)" />
-  <meta name="theme-color" content="#1a73e8" />
-  <title>OpsTrack • Leaflet Edition</title>
-
-  <!-- 🔐 Security Headers -->
-  <meta http-equiv="Content-Security-Policy" content="
-    default-src 'self';
-    script-src 'self' 'unsafe-inline' https://www.gstatic.com https://unpkg.com;
-    style-src 'self' 'unsafe-inline' https://unpkg.com;
-    connect-src 'self' https://ops-track-system-default-rtdb.asia-southeast1.firebasedatabase.app https://*.tile.openstreetmap.org;
-    img-src 'self' https: data:;
-  ">
-
-  <!-- 🗺️ LEAFLET CSS & JS (Ganti Mapbox) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpsTrack • Demo Mode</title>
   
-  <!-- Leaflet Locate Control (Untuk GPS Button) -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.locatecontrol/0.79.0/L.Control.Locate.min.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.locatecontrol/0.79.0/L.Control.Locate.min.js"></script>
-
-  <!-- ⚡ Firebase SDK -->
-  <script type="module">
-    // ========================================================================
-    // 🔧 KONFIGURASI UTAMA
-    // ========================================================================
-    window.OpsTrackConfig = {
-      firebase: {
-        apiKey: "AIzaSyABchyom-zF_ZWuV7HWiDLWBaopBQ1TYxk",
-        authDomain: "ops-track-system.firebaseapp.com",
-        databaseURL: "https://ops-track-system-default-rtdb.asia-southeast1.firebasedatabase.app",
-        projectId: "ops-track-system",
-        storageBucket: "ops-track-system.firebasestorage.app",
-        messagingSenderId: "706189064777",
-        appId: "1:706189064777:web:03f71ed77e5c3e1f265d98"
-      },
-      // Tiada perlu token untuk Leaflet!
-      map: {
-        defaultCenter: [3.1390, 101.6869], // KL
-        defaultZoom: 11,
-        tileLayer: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      },
-      tracking: {
-        adaptiveFrequency: { moving: 8000, stationary: 30000 },        accuracyThreshold: 50,
-        offlineQueueLimit: 100,
-        maxRoutePoints: 500
-      },
-      ui: {
-        theme: "auto",
-        language: "ms"
-      }
-    };
-
-    // ========================================================================
-    // 📦 IMPORT FIREBASE
-    // ========================================================================
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-    import { getDatabase, ref, set, update, onValue, onDisconnect, push } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-database.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
-
-    const app = initializeApp(OpsTrackConfig.firebase);
-    const db = getDatabase(app);
-    const auth = getAuth(app);
-
-    // ========================================================================
-    // 🌐 GLOBAL STATE
-    // ========================================================================
-    window.OpsTrackState = {
-      user: null,
-      role: null,
-      activeMission: null,
-      operators: new Map(),
-      map: null,
-      markers: new Map(),
-      polyline: null,
-      watchId: null,
-      isOnline: navigator.onLine,
-      lastKnownPosition: null,
-      trackingActive: false,
-      offlineQueue: []
-    };
-
-    // ========================================================================
-    // 🧩 CORE MODULES
-    // ========================================================================
-    const OpsTrack = {
-      
-      auth: {
-        async init() {
-          try {
-            onAuthStateChanged(auth, async (user) => {
-              OpsTrackState.user = user;
-              if (user) {                const adminRef = ref(db, `admins/${user.uid}`);
-                onValue(adminRef, (snapshot) => {
-                  OpsTrackState.role = snapshot.exists() ? 'admin' : 'operator';
-                  localStorage.setItem('opsTrackRole', OpsTrackState.role);
-                  OpsTrack.ui.renderDashboard();
-                  OpsTrack.data.startListeners();
-                }, { onlyOnce: true });
-
-                const presenceRef = ref(db, `operators/${user.uid}/isOnline`);
-                onDisconnect(presenceRef).set(false);
-                await update(ref(db, `operators/${user.uid}`), { isOnline: true, lastSeen: Date.now() });
-                
-                OpsTrack.ui.showDashboard();
-                OpsTrack.ui.showToast('✅ Berjaya log masuk', 'success');
-              } else {
-                OpsTrack.ui.showLogin();
-              }
-            });
-            if (!auth.currentUser) await signInAnonymously(auth);
-          } catch (error) {
-            console.error('Auth error:', error);
-            OpsTrack.ui.showToast('❌ Ralat log masuk', 'error');
-          }
-        },
-        async logout() {
-          if (OpsTrackState.trackingActive) OpsTrack.tracking.stop();
-          await signOut(auth);
-          OpsTrackState.user = null;
-          OpsTrackState.role = null;
-          localStorage.removeItem('opsTrackRole');
-          OpsTrack.ui.showLogin();
-        }
-      },
-
-      // 🗺️ MAP MODULE (LEAFLET VERSION)
-      map: {
-        init(containerId = 'map') {
-          try {
-            if (OpsTrackState.map) OpsTrackState.map.remove();
-
-            OpsTrackState.map = L.map(containerId, {
-              center: OpsTrackConfig.map.defaultCenter,
-              zoom: OpsTrackConfig.map.defaultZoom,
-              zoomControl: false // We'll add it manually
-            });
-
-            L.tileLayer(OpsTrackConfig.map.tileLayer, {
-              attribution: OpsTrackConfig.map.attribution,
-              maxZoom: 19,
-              crossOrigin: true            }).addTo(OpsTrackState.map);
-
-            // Add Zoom Control top-right
-            L.control.zoom({ position: 'topright' }).addTo(OpsTrackState.map);
-
-            // Add Geolocation Control
-            L.control.locate({
-              position: 'topright',
-              drawCircle: true,
-              drawMarker: true,
-              keepCurrentZoomLevel: true,
-              markerStyle: { weight: 2, opacity: 1, fillOpacity: 0.5, color: '#1a73e8', fillColor: '#1a73e8' },
-              circleStyle: { color: '#1a73e8', fillColor: '#1a73e8', fillOpacity: 0.2 }
-            }).addTo(OpsTrackState.map);
-
-            return OpsTrackState.map;
-          } catch (error) {
-            console.error('Map init error:', error);
-            OpsTrack.ui.showToast('❌ Ralat memuatkan peta', 'error');
-            return null;
-          }
-        },
-
-        updateOperatorMarker(operatorId, data) {
-          try {
-            const { lat, lng } = data.location || {};
-            if (!lat || !lng) return;
-
-            const status = data.status || 'idle';
-            const colors = { moving: '#34a853', stationary: '#f9ab00', idle: '#5f6368', emergency: '#ea4335' };
-            const color = colors[status] || '#1a73e8';
-            const isActive = OpsTrackState.user?.uid === operatorId;
-
-            if (!OpsTrackState.markers.has(operatorId)) {
-              const marker = L.circleMarker([lat, lng], {
-                radius: isActive ? 10 : 8,
-                fillColor: color,
-                color: '#ffffff',
-                weight: isActive ? 3 : 2,
-                opacity: 1,
-                fillOpacity: 0.9
-              }).addTo(OpsTrackState.map);
-
-              marker.bindPopup(OpsTrack.ui.getOperatorPopupHTML(data));
-              
-              // Click to follow
-              marker.on('click', () => {
-                OpsTrackState.map.flyTo([lat, lng], 15, { duration: 1.5 });
-              });
-              OpsTrackState.markers.set(operatorId, marker);
-            } else {
-              const marker = OpsTrackState.markers.get(operatorId);
-              marker.setLatLng([lat, lng]);
-              marker.setStyle({ 
-                fillColor: color, 
-                radius: isActive ? 10 : 8,
-                weight: isActive ? 3 : 2
-              });
-              marker.setPopupContent(OpsTrack.ui.getOperatorPopupHTML(data));
-            }
-
-            if (isActive && OpsTrackState.trackingActive) {
-              OpsTrackState.map.flyTo([lat, lng], Math.max(OpsTrackState.map.getZoom(), 15), { duration: 1 });
-            }
-          } catch (error) {
-            console.error('Marker update error:', error);
-          }
-        },
-
-        updateRoute(coordinates, status = 'active') {
-          try {
-            if (!coordinates?.length) return;
-            
-            const colors = { emergency: '#ea4335', completed: '#34a853', active: '#1a73e8' };
-            const color = colors[status] || '#1a73e8';
-
-            // Convert [lng, lat] to [lat, lng] for Leaflet
-            const leafletCoords = coordinates.map(c => [c[1], c[0]]);
-
-            if (OpsTrackState.polyline) {
-              OpsTrackState.map.removeLayer(OpsTrackState.polyline);
-            }
-
-            OpsTrackState.polyline = L.polyline(leafletCoords, {
-              color: color,
-              weight: 5,
-              opacity: 0.8,
-              lineCap: 'round',
-              lineJoin: 'round'
-            }).addTo(OpsTrackState.map);
-
-          } catch (error) {
-            console.error('Route update error:', error);
-          }
-        },
-
-        clearRoute() {
-          if (OpsTrackState.polyline) {
-            OpsTrackState.map.removeLayer(OpsTrackState.polyline);            OpsTrackState.polyline = null;
-          }
-        }
-      },
-
-      data: {
-        startListeners() {
-          try {
-            if (OpsTrackState.role === 'admin') {
-              const operatorsRef = ref(db, 'operators');
-              onValue(operatorsRef, (snapshot) => {
-                const data = snapshot.val();
-                if (!data) return;
-                OpsTrackState.operators.clear();
-                Object.entries(data).forEach(([id, op]) => {
-                  OpsTrackState.operators.set(id, op);
-                  if (op.location?.lat && op.location?.lng) {
-                    OpsTrack.map.updateOperatorMarker(id, op);
-                  }
-                });
-                OpsTrack.ui.updateOperatorList();
-              });
-            }
-
-            if (OpsTrackState.user) {
-              const myRef = ref(db, `operators/${OpsTrackState.user.uid}`);
-              onValue(myRef, (snapshot) => {
-                const data = snapshot.val();
-                if (data?.activeMission) OpsTrack.data.listenToMission(data.activeMission);
-              });
-            }
-          } catch (error) {
-            console.error('Listener error:', error);
-          }
-        },
-
-        listenToMission(missionId) {
-          const missionRef = ref(db, `missions/${missionId}`);
-          onValue(missionRef, (snapshot) => {
-            const mission = snapshot.val();
-            if (!mission) return;
-            OpsTrackState.activeMission = mission;
-            if (OpsTrackState.role === 'operator') {
-              OpsTrack.ui.updateMissionPanel(mission);
-            }
-          });
-        },
-
-        async updateLocation(locationData) {
-          if (!OpsTrackState.user?.uid) return false;          const updates = {
-            [`operators/${OpsTrackState.user.uid}/location`]: locationData,
-            [`operators/${OpsTrackState.user.uid}/lastSeen`]: Date.now(),
-            [`operators/${OpsTrackState.user.uid}/status`]: locationData.speed > 0.5 ? 'moving' : 'stationary'
-          };
-          if (OpsTrackState.activeMission?.id) {
-            updates[`missions/${OpsTrackState.activeMission.id}/currentLocation`] = {
-              lat: locationData.lat, lng: locationData.lng, timestamp: locationData.timestamp
-            };
-          }
-          try {
-            await update(ref(db), updates);
-            OpsTrackState.lastKnownPosition = locationData;
-            return true;
-          } catch (error) {
-            OpsTrack.data.queueOffline({ type: 'location', data: locationData });
-            return false;
-          }
-        },
-
-        async sendEmergencyAlert(locationData) {
-          if (!locationData) return;
-          await push(ref(db, 'alerts'), {
-            operatorId: OpsTrackState.user.uid,
-            location: locationData,
-            timestamp: Date.now(),
-            acknowledged: false
-          });
-          await update(ref(db, `operators/${OpsTrackState.user.uid}`), { status: 'emergency' });
-        },
-
-        queueOffline(item) {
-          OpsTrackState.offlineQueue.push({ ...item, queuedAt: Date.now() });
-          if (OpsTrackState.offlineQueue.length > OpsTrackConfig.tracking.offlineQueueLimit) OpsTrackState.offlineQueue.shift();
-          localStorage.setItem('opsTrackOfflineQueue', JSON.stringify(OpsTrackState.offlineQueue));
-          OpsTrack.ui.showToast('📦 Data disimpan (Offline)', 'info');
-        },
-
-        async syncOfflineQueue() {
-          if (OpsTrackState.offlineQueue.length === 0) return;
-          const queue = [...OpsTrackState.offlineQueue];
-          OpsTrackState.offlineQueue = [];
-          for (const item of queue) {
-            if (item.type === 'location') await OpsTrack.data.updateLocation(item.data);
-          }
-          localStorage.setItem('opsTrackOfflineQueue', JSON.stringify(OpsTrackState.offlineQueue));
-          if (OpsTrackState.offlineQueue.length === 0) OpsTrack.ui.showToast('✅ Data disync!', 'success');
-        }
-      },
-      tracking: {
-        start() {
-          if (!navigator.geolocation) { OpsTrack.ui.showToast('GPS tidak disokong', 'error'); return; }
-          if (OpsTrackState.watchId) navigator.geolocation.clearWatch(OpsTrackState.watchId);
-          
-          OpsTrackState.watchId = navigator.geolocation.watchPosition(
-            (pos) => OpsTrack.tracking.onSuccess(pos),
-            (err) => OpsTrack.tracking.onError(err),
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-          );
-          OpsTrackState.trackingActive = true;
-          OpsTrack.ui.showToast('🛰️ Tracking ON', 'success');
-          OpsTrack.ui.updateTrackingUI(true);
-        },
-        stop() {
-          if (OpsTrackState.watchId) navigator.geolocation.clearWatch(OpsTrackState.watchId);
-          OpsTrackState.trackingActive = false;
-          OpsTrack.ui.showToast('⏹ Tracking OFF', 'info');
-          OpsTrack.ui.updateTrackingUI(false);
-        },
-        onSuccess(pos) {
-          const { latitude, longitude, accuracy, speed } = pos.coords;
-          if (accuracy > OpsTrackConfig.tracking.accuracyThreshold) return;
-
-          const loc = {
-            lat: latitude, lng: longitude,
-            accuracy: Math.round(accuracy),
-            speed: speed ? Math.round(speed * 3.6 * 10) / 10 : 0,
-            timestamp: Date.now()
-          };
-
-          const last = OpsTrackState.lastKnownPosition?.timestamp || 0;
-          const freq = speed > 0.5 ? OpsTrackConfig.tracking.adaptiveFrequency.moving : OpsTrackConfig.tracking.adaptiveFrequency.stationary;
-
-          if (Date.now() - last >= freq) {
-            OpsTrack.data.updateLocation(loc);
-            OpsTrack.map.updateRoute([[loc.lng, loc.lat]], OpsTrackState.activeMission?.status || 'active');
-          }
-          OpsTrack.ui.updateLocationDisplay(loc);
-        },
-        onError(err) {
-          const msgs = { 1: 'Akses ditolak', 2: 'Lokasi tiada', 3: 'Timeout' };
-          OpsTrack.ui.showToast(`⚠️ ${msgs[err.code] || 'Error GPS'}`, 'warning');
-        }
-      },
-
-      ui: {
-        init() {
-          this.bindEvents();
-          this.setupTheme();          window.addEventListener('online', () => { OpsTrackState.isOnline = true; this.updateOnlineIndicator(true); OpsTrack.data.syncOfflineQueue(); });
-          window.addEventListener('offline', () => { OpsTrackState.isOnline = false; this.updateOnlineIndicator(false); });
-          this.updateOnlineIndicator(OpsTrackState.isOnline);
-          
-          // Load offline queue
-          const saved = localStorage.getItem('opsTrackOfflineQueue');
-          if (saved) OpsTrackState.offlineQueue = JSON.parse(saved);
-        },
-        bindEvents() {
-          document.getElementById('btn-login-demo')?.addEventListener('click', () => OpsTrack.auth.init());
-          document.getElementById('btn-logout')?.addEventListener('click', () => OpsTrack.auth.logout());
-          document.getElementById('btn-start-tracking')?.addEventListener('click', () => OpsTrack.tracking.start());
-          document.getElementById('btn-stop-tracking')?.addEventListener('click', () => OpsTrack.tracking.stop());
-          document.getElementById('btn-sos')?.addEventListener('click', () => {
-            if(confirm('Hantar SOS?')) {
-              OpsTrack.data.sendEmergencyAlert(OpsTrackState.lastKnownPosition);
-              this.showToast('🚨 SOS DIHANTAR!', 'emergency');
-            }
-          });
-          document.querySelectorAll('[data-checkin]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-              const type = e.target.dataset.checkin;
-              if(OpsTrackState.lastKnownPosition) {
-                OpsTrack.data.updateLocation({ ...OpsTrackState.lastKnownPosition, checkIn: type });
-                this.showToast(`✓ ${type}`, 'success');
-              }
-            });
-          });
-          document.getElementById('theme-toggle')?.addEventListener('change', (e) => {
-            localStorage.setItem('opsTrackTheme', e.target.value);
-            this.setupTheme();
-          });
-          document.getElementById('role-toggle')?.addEventListener('change', (e) => {
-            OpsTrackState.role = e.target.value;
-            localStorage.setItem('opsTrackRole', OpsTrackState.role);
-            this.renderDashboard();
-          });
-        },
-        setupTheme() {
-          const t = localStorage.getItem('opsTrackTheme') || 'auto';
-          const theme = t === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : t;
-          document.documentElement.setAttribute('data-theme', theme);
-          if(document.getElementById('theme-toggle')) document.getElementById('theme-toggle').value = t;
-        },
-        showLogin() { document.getElementById('auth-screen').classList.remove('hidden'); document.getElementById('dashboard-screen').classList.add('hidden'); },
-        showDashboard() {
-          document.getElementById('auth-screen').classList.add('hidden');
-          document.getElementById('dashboard-screen').classList.remove('hidden');
-          if (!OpsTrackState.map && document.getElementById('map')) OpsTrack.map.init('map');
-          this.renderDashboard();        },
-        renderDashboard() {
-          const role = OpsTrackState.role || localStorage.getItem('opsTrackRole') || 'operator';
-          document.body.setAttribute('data-role', role);
-          document.querySelectorAll('[data-role]').forEach(el => {
-            el.classList.toggle('hidden', el.dataset.role !== role && el.dataset.role !== 'all');
-          });
-          document.getElementById('role-indicator').textContent = role === 'admin' ? '👁️ Admin' : '👤 Operator';
-        },
-        getOperatorPopupHTML(data) {
-          const loc = data.location || {};
-          return `<div style="min-width:150px"><strong>${data.name||'Operator'}</strong><br><small>${data.vehicle||''}</small><hr style="margin:4px 0;border:0;border-top:1px solid #ddd"><div>Status: <b>${data.status}</b></div><div>Speed: ${loc.speed||0} km/j</div></div>`;
-        },
-        updateLocationDisplay(loc) {
-          const el = document.getElementById('location-display');
-          if(!el || !loc) return;
-          el.innerHTML = `<div style="font-family:monospace;font-size:0.8rem">📍 ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</div><div style="font-size:0.8rem;color:#666">🎯 ${loc.accuracy}m ${loc.speed>0?'• 🚀 '+loc.speed+'km/j':''}</div>`;
-        },
-        updateMissionPanel(m) {
-          const p = document.getElementById('mission-panel');
-          if(!p || !m) return;
-          p.innerHTML = `<div class="card mission-card"><h4>${m.title}</h4><div class="progress-bar mt-sm"><div class="progress-fill" style="width:${m.progress}%"></div></div><small>${m.progress}% Selesai</small></div>`;
-        },
-        updateOperatorList() {
-          const list = document.getElementById('operator-list');
-          if(!list) return;
-          const ops = Array.from(OpsTrackState.operators.values());
-          list.innerHTML = ops.slice(0, 50).map(op => `<div class="operator-list-item" onclick="OpsTrackState.map.flyTo([${op.location?.lat},${op.location?.lng}],15)"><span class="status-dot ${op.status}"></span><strong>${op.name||'Unknown'}</strong> <small>${op.status}</small></div>`).join('');
-        },
-        updateTrackingUI(active) {
-          const s = document.getElementById('btn-start-tracking'), st = document.getElementById('btn-stop-tracking');
-          if(s) s.disabled = active; if(st) st.disabled = !active;
-        },
-        updateOnlineIndicator(on) {
-          const el = document.getElementById('online-indicator');
-          if(el) el.className = `online-indicator ${on?'online':'offline'}`;
-        },
-        showToast(msg, type='info') {
-          const c = document.getElementById('toast-container');
-          if(!c) return;
-          const t = document.createElement('div');
-          t.className = `toast toast-${type}`;
-          t.innerHTML = `<span>${msg}</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:white;cursor:pointer;margin-left:10px">×</button>`;
-          c.appendChild(t);
-          setTimeout(() => { t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 4000);
-        }
-      }
-    };
-
-    document.addEventListener('DOMContentLoaded', () => { OpsTrack.ui.init(); OpsTrack.auth.init(); });    
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-      window.OpsTrack = OpsTrack; window.OpsTrackState = OpsTrackState;
-    }
-  </script>
-
-  <!-- 🎨 CSS (Sama seperti sebelumnya, ringkas untuk demo) -->
+  <!-- Leaflet Map (FREE, No Token) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
   <style>
-    :root { --color-primary:#1a73e8; --color-success:#34a853; --color-warning:#f9ab00; --color-error:#ea4335; --color-emergency:#d93025; --color-bg:#fff; --color-text:#202124; --color-border:#dadce0; --shadow:0 2px 8px rgba(0,0,0,0.15); }
-    [data-theme="dark"] { --color-bg:#1a1a1a; --color-text:#e8eaed; --color-border:#3c4043; }
-    *{box-sizing:border-box;margin:0;padding:0} body{font-family:system-ui,sans-serif;background:var(--color-bg);color:var(--color-text);height:100vh;display:flex;flex-direction:column}
-    .hidden{display:none!important} .flex{display:flex} .gap-sm{gap:0.5rem} .items-center{align-items:center}
-    #app{flex:1;display:flex;flex-direction:column;overflow:hidden}
-    .screen{flex:1;position:relative;display:none} .screen.active{display:flex;flex-direction:column}
-    .header{padding:1rem;display:flex;justify-content:space-between;align-items:center;background:var(--color-bg);border-bottom:1px solid var(--color-border);z-index:1000}
-    #map{flex:1;width:100%;z-index:1}
-    .panel{position:absolute;background:var(--color-bg);padding:1rem;border-radius:8px;box-shadow:var(--shadow);z-index:1000;max-width:300px;width:90%}
-    .bottom-left{bottom:1rem;left:1rem} .bottom-right{bottom:1rem;right:1rem} .top-right{top:1rem;right:1rem}
-    .btn{padding:0.5rem 1rem;border:none;border-radius:4px;background:var(--color-primary);color:white;cursor:pointer;font-weight:500}
-    .btn:disabled{opacity:0.5;cursor:not-allowed} .btn-success{background:var(--color-success)} .btn-warning{background:var(--color-warning);color:#202124}
-    .btn-emergency{background:var(--color-emergency);animation:pulse 2s infinite}
-    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(217,48,37,0.7)}70%{box-shadow:0 0 0 10px rgba(217,48,37,0)}}
-    #toast-container{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:0.5rem}
-    .toast{padding:0.8rem 1.2rem;background:#333;color:white;border-radius:4px;box-shadow:var(--shadow);opacity:1;transition:opacity 0.3s}
-    .toast-success{background:var(--color-success)} .toast-error{background:var(--color-error)} .toast-warning{background:var(--color-warning);color:#202124} .toast-emergency{background:var(--color-emergency)}
-    .card{background:var(--color-bg);border:1px solid var(--color-border);padding:0.8rem;border-radius:6px;margin-bottom:0.5rem}
-    .mission-card{border-left:4px solid var(--color-primary)}
-    .progress-bar{height:6px;background:#eee;border-radius:3px;overflow:hidden} .progress-fill{height:100%;background:var(--color-success)}
-    .operator-list-item{display:flex;align-items:center;gap:0.5rem;padding:0.5rem;border-bottom:1px solid var(--color-border);cursor:pointer}
-    .operator-list-item:hover{background:rgba(0,0,0,0.05)}
-    .status-dot{width:10px;height:10px;border-radius:50%} .status-dot.moving{background:var(--color-success)} .status-dot.stationary{background:var(--color-warning)} .status-dot.idle{background:#999} .status-dot.emergency{background:var(--color-emergency)}
-    .online-indicator{width:10px;height:10px;border-radius:50%;background:red} .online-indicator.online{background:green}
-    @media(max-width:768px){.panel{width:calc(100%-2rem)}}
+    :root {
+      --primary: #1a73e8; --success: #34a853; --warning: #f9ab00;
+      --error: #ea4335; --emergency: #d93025; --bg: #ffffff;
+      --text: #202124; --card: #f8f9fa; --border: #dadce0;
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1a; --text: #e8eaed; --card: #2d2d2d; --border: #3c4043;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif; background: var(--bg);
+      color: var(--text); height: 100vh; display: flex; flex-direction: column;
+    }
+    .hidden { display: none !important; }
+    
+    /* Header */
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 1rem; background: var(--card); border-bottom: 1px solid var(--border);
+    }
+    .logo { font-size: 1.5rem; font-weight: bold; color: var(--primary); }
+    .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+    
+    /* Map */
+    #map { flex: 1; width: 100%; }
+    
+    /* Panels */
+    .panel {
+      position: absolute; background: var(--card); padding: 1rem;
+      border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      z-index: 1000; max-width: 300px; width: 90%;
+    }
+    .bottom-left { bottom: 1rem; left: 1rem; }
+    .bottom-right { bottom: 1rem; right: 1rem; }
+    .top-right { top: 1rem; right: 1rem; }
+    
+    /* Buttons */
+    .btn {      padding: 0.5rem 1rem; border: none; border-radius: 4px;
+      background: var(--primary); color: white; cursor: pointer;
+      font-weight: 500; transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-success { background: var(--success); }
+    .btn-warning { background: var(--warning); color: #202124; }
+    .btn-emergency {
+      background: var(--emergency);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(217,48,37,0.7); }
+      50% { box-shadow: 0 0 0 10px rgba(217,48,37,0); }
+    }
+    
+    /* Toast */
+    #toast-container {
+      position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
+      z-index: 2000; display: flex; flex-direction: column; gap: 0.5rem;
+    }
+    .toast {
+      padding: 0.8rem 1.5rem; border-radius: 4px; color: white;
+      font-weight: 500; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      animation: slideUp 0.3s ease;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .toast-success { background: var(--success); }
+    .toast-error { background: var(--error); }
+    .toast-warning { background: var(--warning); color: #202124; }
+    .toast-emergency { background: var(--emergency); }
+    .toast-info { background: var(--primary); }
+    
+    /* Cards */
+    .card {
+      background: var(--bg); border: 1px solid var(--border);
+      padding: 0.8rem; border-radius: 6px; margin-bottom: 0.5rem;
+    }
+    .mission-card { border-left: 4px solid var(--primary); }
+    
+    /* Progress */
+    .progress-bar {
+      height: 6px; background: var(--border); border-radius: 3px;
+      overflow: hidden; margin: 0.5rem 0;
+    }
+    .progress-fill {      height: 100%; background: var(--success);
+      transition: width 0.3s ease;
+    }
+    
+    /* Operator List */
+    .operator-list { max-height: 200px; overflow-y: auto; }
+    .operator-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem; border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .operator-item:hover { background: rgba(0,0,0,0.05); }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+    .status-dot.moving { background: var(--success); }
+    .status-dot.stationary { background: var(--warning); }
+    .status-dot.idle { background: #999; }
+    .status-dot.emergency { background: var(--emergency); }
+    
+    /* Location Display */
+    .location-info { font-size: 0.85rem; font-family: monospace; }
+    
+    /* Online Indicator */
+    .online-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--error);
+    }
+    .online-dot.online { background: var(--success); }
+    
+    /* Login Screen */
+    .login-container {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%); text-align: center;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .panel { width: calc(100% - 2rem); }
+      .logo span { display: none; }
+    }
   </style>
 </head>
 <body>
-  <div id="app">
-    <!-- Auth Screen -->
-    <div id="auth-screen" class="screen active">
-      <div class="panel" style="top:50%;left:50%;transform:translate(-50%,-50%);text-align:center">
-        <h2>🛰️ OpsTrack</h2>
-        <p style="margin:1rem 0;color:#666">Sistem Penjejakan (Leaflet Free)</p>
-        <select id="role-toggle" style="width:100%;padding:0.5rem;margin-bottom:1rem">
+  <!-- Login Screen -->
+  <div id="login-screen">
+    <div class="login-container">
+      <h1 style="margin-bottom: 1rem;">🛰️ OpsTrack</h1>
+      <p style="margin-bottom: 1.5rem; color: #666;">Sistem Penjejakan Operator</p>
+            <div style="margin-bottom: 1rem;">
+        <label style="display: block; margin-bottom: 0.5rem;">Pilih Mod:</label>
+        <select id="role-select" style="width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
           <option value="operator">👤 Operator</option>
-          <option value="admin">👁️ Admin</option>
+          <option value="admin">👁️ Admin/Monitor</option>
         </select>
-        <button id="btn-login-demo" class="btn" style="width:100%">Mula Sistem</button>
       </div>
+      
+      <button id="btn-start" class="btn" style="width: 100%; padding: 1rem; font-size: 1rem;">
+        🚀 MULA SEKARANG
+      </button>
+      
+      <p style="margin-top: 1.5rem; font-size: 0.85rem; color: #999;">
+        ✅ Demo Mode - Tanpa Setup Firebase<br>
+        📍 GPS akan berfungsi jika dibenarkan
+      </p>
     </div>
-    <!-- Dashboard -->
-    <div id="dashboard-screen" class="screen">
-      <header class="header">
-        <strong>OpsTrack</strong>
-        <div class="flex items-center gap-sm">
-          <div id="online-indicator" class="online-indicator"></div>
-          <span id="role-indicator" style="font-size:0.8rem">👤 Operator</span>
-          <select id="theme-toggle" style="padding:0.2rem"><option value="light">☀️</option><option value="dark">🌙</option></select>
-          <button id="btn-logout" class="btn btn-warning" style="padding:0.2rem 0.5rem;font-size:0.8rem">Keluar</button>
-        </div>
-      </header>
-
-      <div id="map"></div>
-
-      <!-- Operator Panel -->
-      <div class="panel bottom-left" data-role="operator">
-        <div id="location-display" style="margin-bottom:0.5rem;font-size:0.9rem"></div>
-        <div class="flex gap-sm" style="margin-bottom:0.5rem">
-          <button id="btn-start-tracking" class="btn btn-success" style="flex:1">Start</button>
-          <button id="btn-stop-tracking" class="btn btn-warning" style="flex:1" disabled>Stop</button>
-        </div>
-        <div id="mission-panel"></div>
-        <div class="flex gap-sm" style="margin-top:0.5rem">
-          <button data-checkin="start" class="btn" style="flex:1;font-size:0.8rem">🚀</button>
-          <button data-checkin="checkpoint" class="btn" style="flex:1;font-size:0.8rem">✅</button>
-          <button data-checkin="complete" class="btn" style="flex:1;font-size:0.8rem">🏁</button>
-        </div>
-      </div>
-
-      <!-- Admin Panel -->
-      <div class="panel top-right" data-role="admin">
-        <h4 style="margin-bottom:0.5rem">👥 Operator Aktif</h4>
-        <div id="operator-list" style="max-height:200px;overflow-y:auto"></div>
-        <div id="admin-mission-panel" style="margin-top:1rem"></div>
-      </div>
-
-      <!-- SOS -->
-      <div class="panel bottom-right" data-role="all">
-        <button id="btn-sos" class="btn btn-emergency" style="width:100%;padding:1rem">🚨 SOS</button>
-      </div>
-    </div>
-
-    <div id="toast-container"></div>
   </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard-screen" class="hidden">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">🛰️ <span>OpsTrack</span></div>
+      <div class="header-actions">
+        <div id="online-indicator" class="online-dot" title="Status Internet"></div>
+        <span id="role-display" style="font-size: 0.85rem;">👤 Operator</span>
+        <button id="btn-logout" class="btn btn-warning" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">🚪 Keluar</button>
+      </div>
+    </header>
+
+    <!-- Map -->
+    <div id="map"></div>
+
+    <!-- Operator Panel -->
+    <div class="panel bottom-left" id="operator-panel">
+      <div id="location-display" class="location-info" style="margin-bottom: 0.5rem;">
+        📍 Menunggu GPS...
+      </div>
+      
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <button id="btn-start-tracking" class="btn btn-success" style="flex: 1;">▶ Start</button>
+        <button id="btn-stop-tracking" class="btn btn-warning" style="flex: 1;" disabled>⏹ Stop</button>
+      </div>
+      
+      <div id="mission-card" class="card mission-card">
+        <h4 style="margin-bottom: 0.5rem;">🎯 Misi Aktif</h4>
+        <p style="font-size: 0.85rem; color: #666;">Delivery KLCC → Bangsar</p>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill" style="width: 35%;"></div>        </div>
+        <small id="progress-text">35% Selesai</small>
+      </div>
+      
+      <div style="display: flex; gap: 0.3rem; margin-top: 0.5rem;">
+        <button data-checkin="start" class="btn" style="flex: 1; font-size: 0.8rem;">🚀</button>
+        <button data-checkin="checkpoint" class="btn" style="flex: 1; font-size: 0.8rem;">✅</button>
+        <button data-checkin="rest" class="btn" style="flex: 1; font-size: 0.8rem;">☕</button>
+        <button data-checkin="complete" class="btn" style="flex: 1; font-size: 0.8rem;">🏁</button>
+      </div>
+    </div>
+
+    <!-- Admin Panel -->
+    <div class="panel top-right hidden" id="admin-panel">
+      <h4 style="margin-bottom: 0.5rem;">👥 Operator Aktif</h4>
+      <div id="operator-list" class="operator-list">
+        <!-- Auto-populated -->
+      </div>
+      <div style="margin-top: 1rem;">
+        <button id="btn-add-dummy" class="btn btn-success" style="width: 100%; font-size: 0.85rem;">
+          ➕ Tambah Operator Dummy
+        </button>
+      </div>
+    </div>
+
+    <!-- SOS Button -->
+    <div class="panel bottom-right">
+      <button id="btn-sos" class="btn btn-emergency" style="width: 100%; padding: 1rem;">
+        🚨 SOS / KECEMASAN
+      </button>
+      <p style="margin-top: 0.5rem; font-size: 0.75rem; color: #666; text-align: center;">
+        Tekan untuk hantar alert
+      </p>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <script>
+    // ================================================================
+    // 🎮 DEMO MODE - NO FIREBASE REQUIRED!
+    // ================================================================
+    
+    const AppState = {
+      role: 'operator',
+      tracking: false,
+      watchId: null,
+      position: null,
+      map: null,      markers: new Map(),
+      polyline: null,
+      routePoints: [],
+      dummyOperators: [
+        { id: 'op1', name: 'Ahmad', lat: 3.1390, lng: 101.6869, status: 'moving' },
+        { id: 'op2', name: 'Siti', lat: 3.1478, lng: 101.6953, status: 'stationary' },
+        { id: 'op3', name: 'Tan', lat: 3.0739, lng: 101.5756, status: 'idle' }
+      ]
+    };
+
+    // ================================================================
+    // 🗺️ MAP FUNCTIONS
+    // ================================================================
+    
+    function initMap() {
+      AppState.map = L.map('map').setView([3.1390, 101.6869], 11);
+      
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(AppState.map);
+      
+      // Add dummy operators for admin view
+      if (AppState.role === 'admin') {
+        AppState.dummyOperators.forEach(op => {
+          const marker = L.circleMarker([op.lat, op.lng], {
+            radius: 8,
+            fillColor: getStatusColor(op.status),
+            color: '#fff',
+            weight: 2,
+            fillOpacity: 0.9
+          }).addTo(AppState.map);
+          
+          marker.bindPopup(`<b>${op.name}</b><br>Status: ${op.status}`);
+          AppState.markers.set(op.id, marker);
+        });
+      }
+      
+      showToast('🗺️ Peta dimuatkan', 'success');
+    }
+    
+    function getStatusColor(status) {
+      const colors = {
+        moving: '#34a853',
+        stationary: '#f9ab00',
+        idle: '#999999',
+        emergency: '#ea4335'
+      };
+      return colors[status] || '#1a73e8';
+    }
+        function updatePosition(lat, lng, accuracy, speed) {
+      AppState.position = { lat, lng, accuracy, speed };
+      
+      // Update location display
+      document.getElementById('location-display').innerHTML = `
+        📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}<br>
+        🎯 ${accuracy}m ${speed > 0 ? `• 🚀 ${speed} km/j` : ''}
+      `;
+      
+      // Add/update marker
+      if (!AppState.markers.has('me')) {
+        const marker = L.circleMarker([lat, lng], {
+          radius: 10,
+          fillColor: '#1a73e8',
+          color: '#fff',
+          weight: 3,
+          fillOpacity: 0.9
+        }).addTo(AppState.map);
+        marker.bindPopup('<b>Anda</b><br>Operator Aktif');
+        AppState.markers.set('me', marker);
+      } else {
+        const marker = AppState.markers.get('me');
+        marker.setLatLng([lat, lng]);
+      }
+      
+      // Add route point
+      AppState.routePoints.push([lng, lat]);
+      if (AppState.routePoints.length > 100) AppState.routePoints.shift();
+      
+      // Update polyline
+      if (AppState.polyline) AppState.map.removeLayer(AppState.polyline);
+      if (AppState.routePoints.length > 1) {
+        AppState.polyline = L.polyline(
+          AppState.routePoints.map(p => [p[1], p[0]]),
+          { color: '#1a73e8', weight: 4, opacity: 0.8 }
+        ).addTo(AppState.map);
+      }
+      
+      // Follow user
+      AppState.map.flyTo([lat, lng], 15, { duration: 0.5 });
+    }
+    
+    // ================================================================
+    // 🛰️ GPS TRACKING
+    // ================================================================
+    
+    function startTracking() {
+      if (!navigator.geolocation) {
+        showToast('❌ GPS tidak disokong', 'error');
+        return;      }
+      
+      AppState.watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy, speed } = pos.coords;
+          updatePosition(
+            latitude,
+            longitude,
+            Math.round(accuracy),
+            speed ? Math.round(speed * 3.6 * 10) / 10 : 0
+          );
+        },
+        (err) => {
+          console.warn('GPS Error:', err);
+          showToast('⚠️ GPS error: ' + err.message, 'warning');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+      
+      AppState.tracking = true;
+      document.getElementById('btn-start-tracking').disabled = true;
+      document.getElementById('btn-stop-tracking').disabled = false;
+      showToast('🛰️ Tracking ON', 'success');
+    }
+    
+    function stopTracking() {
+      if (AppState.watchId) {
+        navigator.geolocation.clearWatch(AppState.watchId);
+        AppState.watchId = null;
+      }
+      AppState.tracking = false;
+      document.getElementById('btn-start-tracking').disabled = false;
+      document.getElementById('btn-stop-tracking').disabled = true;
+      showToast('⏹ Tracking OFF', 'info');
+    }
+    
+    // ================================================================
+    // 🎨 UI FUNCTIONS
+    // ================================================================
+    
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);      }, 4000);
+    }
+    
+    function updateOperatorList() {
+      const list = document.getElementById('operator-list');
+      list.innerHTML = AppState.dummyOperators.map(op => `
+        <div class="operator-item" onclick="alert('Lihat ${op.name}')">
+          <span class="status-dot ${op.status}"></span>
+          <span><b>${op.name}</b></span>
+          <span style="margin-left: auto; font-size: 0.85rem; color: #666;">${op.status}</span>
+        </div>
+      `).join('');
+    }
+    
+    function addDummyOperator() {
+      const names = ['Ali', 'Abu', 'Mei', 'Raj', 'Lim', 'Wong'];
+      const id = 'op' + (AppState.dummyOperators.length + 1);
+      const name = names[Math.floor(Math.random() * names.length)];
+      const lat = 3.1390 + (Math.random() - 0.5) * 0.1;
+      const lng = 101.6869 + (Math.random() - 0.5) * 0.1;
+      const status = ['moving', 'stationary', 'idle'][Math.floor(Math.random() * 3)];
+      
+      AppState.dummyOperators.push({ id, name, lat, lng, status });
+      
+      // Add marker
+      const marker = L.circleMarker([lat, lng], {
+        radius: 8,
+        fillColor: getStatusColor(status),
+        color: '#fff',
+        weight: 2,
+        fillOpacity: 0.9
+      }).addTo(AppState.map);
+      marker.bindPopup(`<b>${name}</b><br>Status: ${status}`);
+      AppState.markers.set(id, marker);
+      
+      updateOperatorList();
+      showToast(`✅ ${name} ditambah`, 'success');
+    }
+    
+    // ================================================================
+    // 🎮 EVENT LISTENERS
+    // ================================================================
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      // Start button
+      document.getElementById('btn-start').addEventListener('click', () => {
+        AppState.role = document.getElementById('role-select').value;
+        
+        document.getElementById('login-screen').classList.add('hidden');
+        document.getElementById('dashboard-screen').classList.remove('hidden');        document.getElementById('role-display').textContent = 
+          AppState.role === 'admin' ? '👁️ Admin' : '👤 Operator';
+        
+        // Show/hide panels
+        document.getElementById('operator-panel').classList.toggle('hidden', AppState.role === 'admin');
+        document.getElementById('admin-panel').classList.toggle('hidden', AppState.role === 'operator');
+        
+        // Init map
+        initMap();
+        
+        // Update admin list
+        if (AppState.role === 'admin') {
+          updateOperatorList();
+        }
+        
+        showToast('✅ Selamat datang!', 'success');
+      });
+      
+      // Logout
+      document.getElementById('btn-logout').addEventListener('click', () => {
+        stopTracking();
+        location.reload();
+      });
+      
+      // Tracking buttons
+      document.getElementById('btn-start-tracking').addEventListener('click', startTracking);
+      document.getElementById('btn-stop-tracking').addEventListener('click', stopTracking);
+      
+      // SOS
+      document.getElementById('btn-sos').addEventListener('click', () => {
+        if (confirm('🚨 Hantar alert keceemasan?')) {
+          showToast('🚨 SOS DIHANTAR!', 'emergency');
+        }
+      });
+      
+      // Check-in buttons
+      document.querySelectorAll('[data-checkin]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const type = e.target.dataset.checkin;
+          const labels = { start: '🚀 Mula', checkpoint: '✅ Checkpoint', rest: '☕ Rehat', complete: '🏁 Selesai' };
+          showToast(labels[type] || type, 'success');
+          
+          // Update progress demo
+          const progress = Math.min(100, parseInt(document.getElementById('progress-fill').style.width) + 15);
+          document.getElementById('progress-fill').style.width = progress + '%';
+          document.getElementById('progress-text').textContent = progress + '% Selesai';
+        });
+      });
+      
+      // Add dummy operator (admin)      document.getElementById('btn-add-dummy').addEventListener('click', addDummyOperator);
+      
+      // Online status
+      function updateOnlineStatus() {
+        const dot = document.getElementById('online-indicator');
+        dot.classList.toggle('online', navigator.onLine);
+        dot.title = navigator.onLine ? 'Online' : 'Offline';
+      }
+      window.addEventListener('online', updateOnlineStatus);
+      window.addEventListener('offline', updateOnlineStatus);
+      updateOnlineStatus();
+    });
+  </script>
 </body>
 </html>
