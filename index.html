@@ -159,8 +159,6 @@
     .user-info strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .user-info small { color: #666; font-size: 0.75rem; }
     .user-meta { text-align: right; font-size: 0.7rem; color: #999; }
-    .user-actions { display: flex; gap: 0.25rem; margin-top: 0.5rem; }
-    .user-actions button { padding: 0.25rem 0.5rem; font-size: 0.7rem; }
 
     /* Progress */
     .progress-bar {
@@ -194,9 +192,9 @@
       padding: 0.75rem 1.5rem; border-radius: 8px; color: white;
       font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
       animation: slideUp 0.3s ease;
-    }    @keyframes slideUp {
-      from { transform: translateY(20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }      to { transform: translateY(0); opacity: 1; }
     }
     .toast-success { background: var(--success); }
     .toast-error { background: var(--error); }
@@ -206,9 +204,9 @@
 
     /* Loading */
     .loading-spinner {
-      display: inline-block; width: 16px; height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-radius: 50%; border-top-color: white;
+      display: inline-block; width: 30px; height: 30px;
+      border: 3px solid rgba(26,115,232,0.3);
+      border-radius: 50%; border-top-color: var(--primary);
       animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -243,9 +241,9 @@
       <!-- Family Form -->
       <div id="family-form" class="auth-form active">
         <div class="form-group">
-          <label for="family-name">📝 Nama Anda</label>          <input type="text" id="family-name" placeholder="Contoh: Ahmad (Anak)">
-          <small>Nama akan dipaparkan kepada pemantau</small>
-        </div>
+          <label for="family-name">📝 Nama Anda</label>
+          <input type="text" id="family-name" placeholder="Contoh: Ahmad (Anak)">
+          <small>Nama akan dipaparkan kepada pemantau</small>        </div>
         <button id="btn-family-login" class="btn btn-block" style="padding: 1rem; font-size: 1rem;">
           🚀 MULA SHARE LOKASI
         </button>
@@ -292,9 +290,9 @@
     <div class="panel bottom-left hidden" id="family-panel">
       <h4>📍 Lokasi Anda</h4>
       <div id="location-display">Menunggu GPS...</div>
-      <div id="family-name-display" style="margin-bottom: 0.5rem; font-weight: 600; color: var(--primary);"></div>      
-      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
-        <button id="btn-start" class="btn btn-success btn-sm" style="flex: 1;">▶ Share</button>
+      <div id="family-name-display" style="margin-bottom: 0.5rem; font-weight: 600; color: var(--primary);"></div>
+      
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">        <button id="btn-start" class="btn btn-success btn-sm" style="flex: 1;">▶ Share</button>
         <button id="btn-stop" class="btn btn-warning btn-sm" style="flex: 1;" disabled>⏹ Stop</button>
       </div>
 
@@ -341,9 +339,9 @@
           <div class="icon">⏳</div>
           <small>Memuatkan data...</small>
         </div>
-      </div>      
-      <!-- Selected User Detail -->
-      <div id="selected-user-detail" style="margin-top: 1rem; display: none;">
+      </div>
+      
+      <!-- Selected User Detail -->      <div id="selected-user-detail" style="margin-top: 1rem; display: none;">
         <div class="user-detail-header">
           <div>
             <strong id="selected-user-name" style="color: var(--primary); font-size: 1.1rem;">-</strong>
@@ -390,9 +388,9 @@
   <div id="toast-container"></div>
 
   <!-- ⚡ Firebase + App Logic -->
-  <script type="module">    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, set, update, onValue, onDisconnect, push, remove, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-    import { 
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, set, update, onValue, onDisconnect, push, remove, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";    import { 
       getAuth, 
       signInAnonymously, 
       signInWithEmailAndPassword, 
@@ -439,9 +437,9 @@
       checkpointTimer: 0,
       allUsers: new Map()
     };
+
     // ================================================================
-    // 🎨 UI FUNCTIONS
-    // ================================================================
+    // 🎨 UI FUNCTIONS    // ================================================================
     window.switchAuth = (type) => {
       state.role = type;
       document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
@@ -488,9 +486,9 @@
       const t = document.createElement('div');
       t.className = `toast toast-${type}`;
       t.textContent = msg;
-      document.getElementById('toast-container').appendChild(t);      setTimeout(() => { 
-        t.style.opacity = '0'; 
-        setTimeout(() => t.remove(), 300); 
+      document.getElementById('toast-container').appendChild(t);
+      setTimeout(() => { 
+        t.style.opacity = '0';         setTimeout(() => t.remove(), 300); 
       }, 4000);
     }
 
@@ -501,6 +499,13 @@
       if (seconds < 3600) return `${Math.floor(seconds / 60)}m lalu`;
       if (seconds < 86400) return `${Math.floor(seconds / 3600)}j lalu`;
       return `${Math.floor(seconds / 86400)}h lalu`;
+    }
+
+    function updateStats(online, total, emergency, moving) {
+      document.getElementById('stat-online').textContent = online;
+      document.getElementById('stat-total').textContent = total;
+      document.getElementById('stat-emergency').textContent = emergency;
+      document.getElementById('stat-moving').textContent = moving;
     }
 
     // ================================================================
@@ -532,12 +537,12 @@
         }
         
         showDashboard();
-        initMap();
-        
+        initMap();        
         if (state.role === 'family') {
           listenOwnData();
         } else {
-          listenAllUsers();        }
+          listenAllUsers();
+        }
         
         toast(`✅ Selamat datang!`, 'success');
       } else {
@@ -581,12 +586,12 @@
       
       try {
         await signInWithEmailAndPassword(auth, email, password);
-      } catch (e) {
-        console.error('Operator login error:', e);
+      } catch (e) {        console.error('Operator login error:', e);
         let msg = e.message;
         if (e.code === 'auth/invalid-email') msg = 'Email tidak sah';
         if (e.code === 'auth/user-not-found') msg = 'Operator tidak dijumpai. Sila daftar di Firebase Console.';
-        if (e.code === 'auth/wrong-password') msg = 'Password salah';        if (e.code === 'auth/too-many-requests') msg = 'Terlalu banyak percubaan.';
+        if (e.code === 'auth/wrong-password') msg = 'Password salah';
+        if (e.code === 'auth/too-many-requests') msg = 'Terlalu banyak percubaan.';
         if (e.code === 'auth/operation-not-allowed') msg = 'Email/Password auth tidak dienable di Firebase';
         toast('❌ ' + msg, 'error');
       } finally {
@@ -630,12 +635,12 @@
       
       console.log('✅ Map initialized');
     }
-
     function updateUserMarker(userId, lat, lng, status, name, isSelf = false) {
       const colors = { online: '#34a853', offline: '#999999', emergency: '#ea4335', moving: '#1a73e8' };
       
       if (!state.markers.has(userId)) {
-        const m = L.circleMarker([lat, lng], {          radius: isSelf ? 12 : 8,
+        const m = L.circleMarker([lat, lng], {
+          radius: isSelf ? 12 : 8,
           fillColor: colors[status] || '#1a73e8',
           color: '#fff',
           weight: 3,
@@ -679,12 +684,12 @@
     function createCheckpoint(userId, lat, lng, checkpointNum) {
       const marker = L.circleMarker([lat, lng], {
         radius: 6,
-        fillColor: '#f9ab00',
-        color: '#fff',
+        fillColor: '#f9ab00',        color: '#fff',
         weight: 2,
         fillOpacity: 0.9
       }).addTo(state.map);
-      marker.bindPopup(`<b>🚩 Checkpoint ${checkpointNum}</b><br>${lat.toFixed(4)}, ${lng.toFixed(4)}`);      
+      marker.bindPopup(`<b>🚩 Checkpoint ${checkpointNum}</b><br>${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      
       if (!state.checkpoints.has(userId)) state.checkpoints.set(userId, []);
       const checkpoints = state.checkpoints.get(userId);
       checkpoints.push({ id: `cp_${checkpointNum}`, lat, lng, num: checkpointNum, timestamp: Date.now() });
@@ -717,7 +722,6 @@
       document.getElementById('selected-user-detail').style.display = 'block';
       document.getElementById('selected-user-name').textContent = name || 'Unknown';
       
-      // Update user detail info
       if (state.selectedUserData) {
         const userData = state.selectedUserData;
         document.getElementById('selected-user-status').textContent = 
@@ -729,11 +733,10 @@
           userData.location?.accuracy ? `${userData.location.accuracy}m` : '-';
       }
       
-      // Setup delete button
-      document.getElementById('btn-delete-user').onclick = () => deleteUser(userId, name);
-      document.getElementById('btn-focus-user').onclick = () => {
+      document.getElementById('btn-delete-user').onclick = () => deleteUser(userId, name);      document.getElementById('btn-focus-user').onclick = () => {
         const marker = state.markers.get(userId);
-        if (marker) state.map.flyTo(marker.getLatLng(), 15, { duration: 1 });      };
+        if (marker) state.map.flyTo(marker.getLatLng(), 15, { duration: 1 });
+      };
       document.getElementById('btn-clear-route').onclick = () => clearUserRoute(userId);
       
       showUserCheckpoints(userId, name);
@@ -779,10 +782,10 @@
       progressFill.style.width = `${progress}%`;
       progressText.textContent = `${progress}% Perjalanan (${checkpoints.length} checkpoint)`;
     }
-
     function clearUserRoute(userId) {
       if (state.polylines.has(userId)) {
-        state.map.removeLayer(state.polylines.get(userId));        state.polylines.delete(userId);
+        state.map.removeLayer(state.polylines.get(userId));
+        state.polylines.delete(userId);
       }
       if (state.polylines.has(userId + '_cp')) {
         state.polylines.get(userId + '_cp').forEach(line => state.map.removeLayer(line));
@@ -805,16 +808,13 @@
         await remove(ref(db, `users/${userId}`));
         toast(`✅ ${name} berjaya dihapus`, 'success');
         
-        // Clear from map
         if (state.markers.has(userId)) {
           state.map.removeLayer(state.markers.get(userId));
           state.markers.delete(userId);
         }
         
-        // Clear route
         clearUserRoute(userId);
         
-        // Hide detail panel
         document.getElementById('selected-user-detail').style.display = 'none';
         state.selectedUser = null;
         state.selectedUserData = null;
@@ -829,7 +829,7 @@
     }
 
     // ================================================================
-    // 📡 DATA LISTENERS
+    // 📡 DATA LISTENERS - FIXED VERSION
     // ================================================================
     function listenOwnData() {      onValue(ref(db, `users/${state.user.uid}`), (snap) => {
         const data = snap.val();
@@ -848,136 +848,116 @@
     }
 
     function listenAllUsers() {
-  console.log('👁️ Operator: Loading users...');
-  
-  // Show loading state
-  const userList = document.getElementById('user-list');
-  userList.innerHTML = `
-    <div class="empty-state">
-      <div class="icon">⏳</div>
-      <small>Memuatkan data...</small>
-      <div class="loading-spinner" style="width:30px;height:30px;margin:1rem auto;border-color:var(--primary)"></div>
-    </div>
-  `;
-  
-  const usersRef = ref(db, 'users');
-  
-  // Use once() for faster initial load, then onValue for updates
-  get(usersRef).then((snap) => {
-    console.log('📊 Initial load complete:', snap.exists() ? 'Has data' : 'Empty');
-    updateUsersList(snap);
-    
-    // Then listen for real-time updates
-    onValue(usersRef, (updateSnap) => {
-      console.log('🔄 Real-time update received');
-      updateUsersList(updateSnap);
-    }, (error) => {
-      console.error('❌ Real-time listener error:', error);
-    });
-    
-  }).catch((error) => {
-    console.error('❌ Initial load error:', error);
-    userList.innerHTML = `
-      <div class="empty-state">
-        <div class="icon">❌</div>
-        <small>Gagal load data: ${error.message}</small>
-        <button class="btn btn-sm btn-outline" onclick="location.reload()" style="margin-top:0.5rem">🔄 Cuba Lagi</button>
-      </div>
-    `;
-  });
-}
-
-function updateUsersList(snap) {
-  const data = snap.val();
-  const userList = document.getElementById('user-list');
-  userList.innerHTML = '';
-  
-  if (!data) {
-    userList.innerHTML = `
-      <div class="empty-state">
-        <div class="icon">👥</div>
-        <small>Tiada ahli keluarga dalam sistem</small>        <p style="margin-top:0.5rem;font-size:0.75rem;color:#999">
-          Minta ahli keluarga login dulu untuk share lokasi
-        </p>
-      </div>
-    `;
-    updateStats(0, 0, 0, 0);
-    return;
-  }
-  
-  state.allUsers.clear();
-  let onlineCount = 0, totalCount = 0, emergencyCount = 0, movingCount = 0;
-  
-  Object.entries(data).forEach(([userId, userData]) => {
-    totalCount++;
-    state.allUsers.set(userId, userData);
-    
-    if (userData.isOnline) onlineCount++;
-    if (userData.status === 'emergency') emergencyCount++;
-    if (userData.status === 'moving') movingCount++;
-    
-    if (userData.location?.lat && userData.location?.lng) {
-      updateUserMarker(
-        userId,
-        userData.location.lat,
-        userData.location.lng,
-        userData.isOnline ? (userData.status || 'online') : 'offline',
-        userData.name || 'Unknown'
-      );
+      console.log('👁️ Operator: Loading users...');
       
-      if (state.selectedUser === userId) {
-        updateRoute(userId, userData.location.lat, userData.location.lng);
-        showUserCheckpoints(userId, userData.name);
+      const userList = document.getElementById('user-list');
+      userList.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">⏳</div>
+          <small>Memuatkan data...</small>
+          <div class="loading-spinner" style="margin:1rem auto"></div>
+        </div>
+      `;
+      
+      const usersRef = ref(db, 'users');
+      
+      // Initial load with get()
+      get(usersRef).then((snap) => {
+        console.log('📊 Initial load:', snap.exists() ? 'Has data' : 'Empty');
+        updateUsersList(snap);
         
-        document.getElementById('selected-user-status').textContent = 
-          `${userData.isOnline ? '🟢 Online' : '🔴 Offline'} • ${userData.status || '-'}`;
-        document.getElementById('selected-user-lastupdate').textContent = timeAgo(userData.lastSeen);
-        document.getElementById('selected-user-speed').textContent = 
-          userData.location?.speed ? `${userData.location.speed} km/j` : '-';
-        document.getElementById('selected-user-accuracy').textContent = 
-          userData.location?.accuracy ? `${userData.location.accuracy}m` : '-';
-      }
-    }
-    
-    const item = document.createElement('div');
-    item.className = `user-item ${state.selectedUser === userId ? 'active' : ''}`;
-    item.dataset.userid = userId;
-    item.onclick = () => selectUser(userId, userData.name);
-    
-    item.innerHTML = `
-      <span class="status-dot ${userData.isOnline ? 'online' : 'offline'} ${userData.status === 'emergency' ? 'emergency' : ''}"></span>      <div class="user-info">
-        <strong>${userData.name || 'Unknown'}</strong>
-        <small>${userData.location ? '📍 Ada lokasi' : '⏳ Menunggu lokasi'}</small>
-      </div>
-      <div class="user-meta">
-        <div>${userData.isOnline ? '🟢' : '🔴'}</div>
-        <div>${timeAgo(userData.lastSeen)}</div>
-      </div>
-    `;
-    userList.appendChild(item);
-  });
-  
-  updateStats(onlineCount, totalCount, emergencyCount, movingCount);
-  console.log(`✅ Loaded ${totalCount} users in ${Date.now()}ms`);
-}
-
-function updateStats(online, total, emergency, moving) {
-  document.getElementById('stat-online').textContent = online;
-  document.getElementById('stat-total').textContent = total;
-  document.getElementById('stat-emergency').textContent = emergency;
-  document.getElementById('stat-moving').textContent = moving;
-}
-    
-        console.log(`✅ Loaded ${totalCount} users, ${onlineCount} online`);      }, (error) => {
-        console.error('❌ Error listening users:', error);
-        document.getElementById('user-list').innerHTML = `
+        // Then listen for real-time updates
+        onValue(usersRef, (updateSnap) => {
+          console.log('🔄 Real-time update');
+          updateUsersList(updateSnap);
+        }, (error) => {
+          console.error('❌ Real-time error:', error);
+        });
+        
+      }).catch((error) => {
+        console.error('❌ Initial load error:', error);
+        userList.innerHTML = `
           <div class="empty-state">
             <div class="icon">❌</div>
-            <small>Error: ${error.message}</small>
-            <button class="btn btn-sm btn-outline" onclick="location.reload()" style="margin-top: 0.5rem;">🔄 Refresh</button>
-          </div>
+            <small>Gagal: ${error.message}</small>
+            <button class="btn btn-sm btn-outline" onclick="location.reload()" style="margin-top:0.5rem">🔄 Cuba Lagi</button>          </div>
         `;
       });
+    }
+
+    function updateUsersList(snap) {
+      const data = snap.val();
+      const userList = document.getElementById('user-list');
+      userList.innerHTML = '';
+      
+      if (!data) {
+        userList.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">👥</div>
+            <small>Tiada ahli keluarga dalam sistem</small>
+            <p style="margin-top:0.5rem;font-size:0.75rem;color:#999">
+              Minta ahli keluarga login dulu untuk share lokasi
+            </p>
+          </div>
+        `;
+        updateStats(0, 0, 0, 0);
+        return;
+      }
+      
+      state.allUsers.clear();
+      let onlineCount = 0, totalCount = 0, emergencyCount = 0, movingCount = 0;
+      
+      Object.entries(data).forEach(([userId, userData]) => {
+        totalCount++;
+        state.allUsers.set(userId, userData);
+        
+        if (userData.isOnline) onlineCount++;
+        if (userData.status === 'emergency') emergencyCount++;
+        if (userData.status === 'moving') movingCount++;
+        
+        if (userData.location?.lat && userData.location?.lng) {
+          updateUserMarker(
+            userId,
+            userData.location.lat,
+            userData.location.lng,
+            userData.isOnline ? (userData.status || 'online') : 'offline',
+            userData.name || 'Unknown'
+          );
+          
+          if (state.selectedUser === userId) {
+            updateRoute(userId, userData.location.lat, userData.location.lng);
+            showUserCheckpoints(userId, userData.name);
+            
+            document.getElementById('selected-user-status').textContent = 
+              `${userData.isOnline ? '🟢 Online' : '🔴 Offline'} • ${userData.status || '-'}`;            document.getElementById('selected-user-lastupdate').textContent = timeAgo(userData.lastSeen);
+            document.getElementById('selected-user-speed').textContent = 
+              userData.location?.speed ? `${userData.location.speed} km/j` : '-';
+            document.getElementById('selected-user-accuracy').textContent = 
+              userData.location?.accuracy ? `${userData.location.accuracy}m` : '-';
+          }
+        }
+        
+        const item = document.createElement('div');
+        item.className = `user-item ${state.selectedUser === userId ? 'active' : ''}`;
+        item.dataset.userid = userId;
+        item.onclick = () => selectUser(userId, userData.name);
+        
+        item.innerHTML = `
+          <span class="status-dot ${userData.isOnline ? 'online' : 'offline'} ${userData.status === 'emergency' ? 'emergency' : ''}"></span>
+          <div class="user-info">
+            <strong>${userData.name || 'Unknown'}</strong>
+            <small>${userData.location ? '📍 Ada lokasi' : '⏳ Menunggu lokasi'}</small>
+          </div>
+          <div class="user-meta">
+            <div>${userData.isOnline ? '🟢' : '🔴'}</div>
+            <div>${timeAgo(userData.lastSeen)}</div>
+          </div>
+        `;
+        userList.appendChild(item);
+      });
+      
+      updateStats(onlineCount, totalCount, emergencyCount, movingCount);
+      console.log(`✅ Loaded ${totalCount} users`);
     }
 
     document.getElementById('btn-refresh-users').addEventListener('click', () => {
@@ -998,8 +978,7 @@ function updateStats(online, total, emergency, moving) {
       
       if (shouldCreateCheckpoint) {
         state.checkpointCounter++;
-        createCheckpoint(state.user.uid, lat, lng, state.checkpointCounter);
-        state.lastCheckpointPos = { lat, lng };
+        createCheckpoint(state.user.uid, lat, lng, state.checkpointCounter);        state.lastCheckpointPos = { lat, lng };
         state.checkpointTimer = Date.now();
         updateCheckpointList();
       }
@@ -1018,6 +997,7 @@ function updateStats(online, total, emergency, moving) {
         🎯 Ketepatan: ${acc}m ${speed > 0 ? `• 🚀 ${speed} km/j` : ''}
       `;
     }
+
     function updateCheckpointList() {
       const list = document.getElementById('checkpoint-list');
       const checkpoints = state.checkpoints.get(state.user.uid) || [];
@@ -1047,8 +1027,7 @@ function updateStats(online, total, emergency, moving) {
       const R = 6371000;
       const dLat = deg2rad(lat2 - lat1);
       const dLon = deg2rad(lon2 - lon1);
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
                 Math.sin(dLon/2) * Math.sin(dLon/2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       return R * c;
@@ -1066,7 +1045,8 @@ function updateStats(online, total, emergency, moving) {
       
       state.watchId = navigator.geolocation.watchPosition(
         (p) => updateLocation(
-          p.coords.latitude,          p.coords.longitude,
+          p.coords.latitude,
+          p.coords.longitude,
           Math.round(p.coords.accuracy),
           p.coords.speed ? Math.round(p.coords.speed * 3.6 * 10) / 10 : 0
         ),
@@ -1096,8 +1076,7 @@ function updateStats(online, total, emergency, moving) {
         timestamp: Date.now(),
         acknowledged: false
       });
-      await update(ref(db, `users/${state.user.uid}`), { status: 'emergency' });
-      toast('🚨 SOS DIHANTAR! Pemantau akan diberitahu', 'emergency');
+      await update(ref(db, `users/${state.user.uid}`), { status: 'emergency' });      toast('🚨 SOS DIHANTAR! Pemantau akan diberitahu', 'emergency');
     }
 
     document.getElementById('btn-sos').addEventListener('click', () => { 
