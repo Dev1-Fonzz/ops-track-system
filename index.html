@@ -2,412 +2,195 @@
 <html lang="ms">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#1a73e8">
-  <title>OpsTrack • Sistem Penjejakan</title>
-  
-  <!-- 🗺️ Leaflet Map (FREE - No Token) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpsTrack • Offline Mode</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  
-  <!-- ⚡ Firebase SDK -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-    import { getDatabase, ref, set, update, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-database.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
-
-    // ================================================================
-    // 🔧 KONFIGURASI
-    // ================================================================
-    const config = {
-      firebase: {
-        apiKey: "AIzaSyABchyom-zF_ZWuV7HWiDLWBaopBQ1TYxk",
-        authDomain: "ops-track-system.firebaseapp.com",
-        databaseURL: "https://ops-track-system-default-rtdb.asia-southeast1.firebasedatabase.app",
-        projectId: "ops-track-system",
-        storageBucket: "ops-track-system.firebasestorage.app",
-        messagingSenderId: "706189064777",
-        appId: "1:706189064777:web:03f71ed77e5c3e1f265d98"
-      },
-      map: { center: [3.1390, 101.6869], zoom: 11 }
-    };
-
-    const app = initializeApp(config.firebase);
-    const db = getDatabase(app);
-    const auth = getAuth(app);
-
-    // ================================================================
-    // 🌐 STATE
-    // ================================================================
-    const state = {
-      user: null, role: 'operator', map: null, markers: new Map(),
-      polyline: null, route: [], watchId: null, tracking: false, pos: null
-    };
-
-    // ================================================================
-    // 🔐 AUTH
-    // ================================================================
-    onAuthStateChanged(auth, async (user) => {      if (user) {
-        state.user = user;
-        // Auto create operator profile
-        await update(ref(db, `operators/${user.uid}`), {
-          name: `Operator_${user.uid.slice(0,6)}`,
-          status: 'idle', isOnline: true, lastSeen: Date.now(),
-          createdAt: Date.now()
-        });
-        onDisconnect(ref(db, `operators/${user.uid}/isOnline`)).set(false);
-        showDashboard();
-        initMap();
-        listenData();
-        toast('✅ Log masuk berjaya', 'success');
-      } else {
-        showLogin();
-      }
-    });
-
-    async function login() {
-      try {
-        await signInAnonymously(auth);
-      } catch (e) {
-        toast('❌ ' + (e.code === 'auth/operation-not-allowed' 
-          ? 'Enable Anonymous Auth di Firebase Console!' 
-          : e.message), 'error');
-      }
-    }
-
-    async function logout() {
-      if (state.watchId) navigator.geolocation.clearWatch(state.watchId);
-      await signOut(auth);
-      location.reload();
-    }
-
-    // ================================================================
-    // 🗺️ MAP
-    // ================================================================
-    function initMap() {
-      state.map = L.map('map', { zoomControl: false }).setView(config.map.center, config.map.zoom);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap', maxZoom: 19
-      }).addTo(state.map);
-      L.control.zoom({ position: 'topright' }).addTo(state.map);
-      L.control.locate({ position: 'topright', drawCircle: true, drawMarker: true }).addTo(state.map);
-    }
-
-    function updateMarker(id, lat, lng, status, name = 'Operator') {
-      const colors = { moving: '#34a853', stationary: '#f9ab00', idle: '#999', emergency: '#ea4335' };
-      if (!state.markers.has(id)) {
-        const m = L.circleMarker([lat, lng], {          radius: 8, fillColor: colors[status] || '#1a73e8', color: '#fff', weight: 2, fillOpacity: 0.9
-        }).addTo(state.map);
-        m.bindPopup(`<b>${name}</b><br>${status}`);
-        state.markers.set(id, m);
-      } else {
-        const m = state.markers.get(id);
-        m.setLatLng([lat, lng]);
-        m.setStyle({ fillColor: colors[status] || '#1a73e8' });
-        m.setPopupContent(`<b>${name}</b><br>${status}`);
-      }
-    }
-
-    function updateRoute(lat, lng) {
-      state.route.push([lng, lat]);
-      if (state.route.length > 500) state.route.shift();
-      if (state.polyline) state.map.removeLayer(state.polyline);
-      if (state.route.length > 1) {
-        state.polyline = L.polyline(state.route.map(p => [p[1], p[0]]), {
-          color: '#1a73e8', weight: 4, opacity: 0.8, lineCap: 'round'
-        }).addTo(state.map);
-      }
-    }
-
-    // ================================================================
-    // 📡 DATA
-    // ================================================================
-    function listenData() {
-      onValue(ref(db, 'operators'), (snap) => {
-        const data = snap.val();
-        if (!data) return;
-        Object.entries(data).forEach(([id, op]) => {
-          if (op.location?.lat && op.location?.lng) {
-            updateMarker(id, op.location.lat, op.location.lng, op.status, op.name);
-          }
-        });
-      });
-    }
-
-    async function updateLocation(lat, lng, acc, speed) {
-      if (!state.user) return;
-      state.pos = { lat, lng, acc, speed, ts: Date.now() };
-      await update(ref(db, `operators/${state.user.uid}`), {
-        location: { lat, lng, accuracy: acc, speed, timestamp: Date.now() },
-        status: speed > 0.5 ? 'moving' : 'stationary',
-        lastSeen: Date.now()
-      });
-      updateRoute(lat, lng);
-      document.getElementById('loc').innerHTML = `📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}<br>🎯 ${acc}m ${speed > 0 ? `• 🚀 ${speed} km/j` : ''}`;
-    }
-    // ================================================================
-    // 🛰️ GPS
-    // ================================================================
-    function startTrack() {
-      if (!navigator.geolocation) return toast('❌ GPS tidak disokong', 'error');
-      state.watchId = navigator.geolocation.watchPosition(
-        (p) => updateLocation(p.coords.latitude, p.coords.longitude, 
-          Math.round(p.coords.accuracy), 
-          p.coords.speed ? Math.round(p.coords.speed * 3.6 * 10) / 10 : 0),
-        (e) => toast('⚠️ GPS: ' + e.message, 'warning'),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-      state.tracking = true;
-      $('#btn-start').disabled = true; $('#btn-stop').disabled = false;
-      toast('🛰️ Tracking ON', 'success');
-    }
-
-    function stopTrack() {
-      if (state.watchId) navigator.geolocation.clearWatch(state.watchId);
-      state.tracking = false;
-      $('#btn-start').disabled = false; $('#btn-stop').disabled = true;
-      toast('⏹ Tracking OFF', 'info');
-    }
-
-    // ================================================================
-    // 🎨 UI
-    // ================================================================
-    function showLogin() {
-      $('#login-screen').classList.remove('hidden');
-      $('#dashboard').classList.add('hidden');
-    }
-
-    function showDashboard() {
-      $('#login-screen').classList.add('hidden');
-      $('#dashboard').classList.remove('hidden');
-    }
-
-    function toast(msg, type = 'info') {
-      const t = document.createElement('div');
-      t.className = `toast toast-${type}`;
-      t.textContent = msg;
-      $('#toast-container').appendChild(t);
-      setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 4000);
-    }
-
-    function $(id) { return document.getElementById(id); }
-
-    // ================================================================
-    // 🎮 EVENTS
-    // ================================================================    $('#btn-login').onclick = login;
-    $('#btn-logout').onclick = logout;
-    $('#btn-start').onclick = startTrack;
-    $('#btn-stop').onclick = stopTrack;
-    $('#btn-sos').onclick = () => {
-      if (confirm('🚨 Hantar SOS?')) {
-        if (state.user) update(ref(db, `operators/${state.user.uid}`), { status: 'emergency' });
-        toast('🚨 SOS DIHANTAR!', 'emergency');
-      }
-    };
-    $$('[data-checkin]').forEach(b => b.onclick = (e) => {
-      const types = { start: '🚀 Mula', checkpoint: '✅ Checkpoint', rest: '☕ Rehat', complete: '🏁 Selesai' };
-      toast(types[e.target.dataset.checkin], 'success');
-    });
-    $('#theme-toggle').onclick = () => {
-      const dark = document.body.getAttribute('data-theme') === 'dark';
-      document.body.setAttribute('data-theme', dark ? 'light' : 'dark');
-    };
-
-    function $$(sel) { return document.querySelectorAll(sel); }
-
-    // Online status
-    window.addEventListener('online', () => $('#online-dot').classList.add('online'));
-    window.addEventListener('offline', () => $('#online-dot').classList.remove('online'));
-  </script>
-
-  <!-- 🎨 CSS -->
   <style>
-    :root {
-      --bg: #ffffff; --card: #f8f9fa; --text: #202124; --border: #dadce0;
-      --primary: #1a73e8; --success: #34a853; --warning: #f9ab00;
-      --error: #ea4335; --emergency: #d93025;
-    }
-    [data-theme="dark"] {
-      --bg: #1a1a1a; --card: #2d2d2d; --text: #e8eaed; --border: #3c4043;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
-    }
-    .hidden { display: none !important; }
-
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:system-ui,sans-serif;height:100vh;display:flex;flex-direction:column}
+    .hidden{display:none!important}
+    
     /* Login */
-    #login-screen {
-      display: flex; align-items: center; justify-content: center;
-      height: 100vh; background: linear-gradient(135deg, var(--primary), #0d47a1);
-    }
-    .login-box {
-      background: white; padding: 2.5rem; border-radius: 16px;      box-shadow: 0 10px 40px rgba(0,0,0,0.2); text-align: center; max-width: 400px; width: 90%;
-    }
-    .login-box h1 { color: var(--primary); margin-bottom: 0.5rem; }
-    .login-box p { color: #666; margin-bottom: 1.5rem; }
-
+    #login{display:flex;align-items:center;justify-content:center;height:100vh;
+      background:linear-gradient(135deg,#1a73e8,#0d47a1)}
+    .login-box{background:white;padding:2rem;border-radius:16px;text-align:center;
+      box-shadow:0 10px 40px rgba(0,0,0,0.3);max-width:380px;width:90%}
+    .login-box h1{color:#1a73e8;margin-bottom:0.5rem}
+    .login-box p{color:#666;margin-bottom:1.5rem}
+    
     /* Header */
-    header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 0.75rem 1rem; background: var(--card);
-      border-bottom: 1px solid var(--border);
-    }
-    .logo { font-size: 1.25rem; font-weight: 700; color: var(--primary); }
-    .header-right { display: flex; align-items: center; gap: 0.75rem; }
-    #online-dot {
-      width: 10px; height: 10px; border-radius: 50%; background: var(--error);
-    }
-    #online-dot.online { background: var(--success); }
-
+    header{display:flex;justify-content:space-between;align-items:center;
+      padding:0.75rem 1rem;background:#f8f9fa;border-bottom:1px solid #dadce0}
+    .logo{font-size:1.25rem;font-weight:700;color:#1a73e8}
+    
     /* Map */
-    #map { height: calc(100vh - 60px); width: 100%; }
-
-    /* Panels */
-    .panel {
-      position: absolute; background: var(--card); padding: 1rem;
-      border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      z-index: 1000; max-width: 320px; width: calc(100% - 2rem);
-    }
-    .panel h4 { margin-bottom: 0.75rem; font-size: 0.95rem; }
-    .bottom-left { bottom: 1rem; left: 1rem; }
-    .bottom-right { bottom: 1rem; right: 1rem; }
-
+    #map{flex:1;width:100%}
+    
+    /* Panel */
+    .panel{position:absolute;background:white;padding:1rem;border-radius:12px;
+      box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:1000;max-width:300px;width:calc(100%-2rem)}
+    .bottom-left{bottom:1rem;left:1rem}
+    .bottom-right{bottom:1rem;right:1rem}
+    
     /* Buttons */
-    .btn {
-      padding: 0.6rem 1.2rem; border: none; border-radius: 8px;
-      background: var(--primary); color: white; font-weight: 600;
-      cursor: pointer; transition: all 0.2s; font-size: 0.9rem;
-    }
-    .btn:hover { opacity: 0.9; transform: translateY(-1px); }
-    .btn:active { transform: translateY(0); }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-    .btn-success { background: var(--success); }
-    .btn-warning { background: var(--warning); color: #202124; }
-    .btn-emergency {
-      background: var(--emergency);
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(217,48,37,0.7); }
-      50% { box-shadow: 0 0 0 10px rgba(217,48,37,0); }
-    }    .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
-    .btn-block { width: 100%; }
-
+    .btn{padding:0.6rem 1.2rem;border:none;border-radius:8px;background:#1a73e8;
+      color:white;font-weight:600;cursor:pointer;font-size:0.9rem}
+    .btn:hover{opacity:0.9}
+    .btn:disabled{opacity:0.5;cursor:not-allowed}
+    .btn-success{background:#34a853}
+    .btn-warning{background:#f9ab00;color:#202124}
+    .btn-emergency{background:#d93025;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(217,48,37,0.7)}50%{box-shadow:0 0 0 10px rgba(217,48,37,0)}}
+    .btn-sm{padding:0.4rem 0.8rem;font-size:0.8rem}
+    .btn-block{width:100%}
+    
     /* Location */
-    #loc {
-      font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.8rem;
-      background: rgba(0,0,0,0.05); padding: 0.5rem; border-radius: 6px;
-      margin-bottom: 0.75rem;
-    }
-
-    /* Progress */
-    .progress {
-      height: 6px; background: var(--border); border-radius: 3px;
-      overflow: hidden; margin: 0.5rem 0;
-    }
-    .progress-fill {
-      height: 100%; background: var(--success);
-      transition: width 0.3s ease;
-    }
-
-    /* Check-in buttons */
-    .checkin-grid {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.3rem;
-      margin-top: 0.75rem;
-    }
-
+    #loc{font-family:monospace;font-size:0.8rem;background:#f0f0f0;padding:0.5rem;
+      border-radius:6px;margin-bottom:0.75rem}    
     /* Toast */
-    #toast-container {
-      position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
-      z-index: 2000; display: flex; flex-direction: column; gap: 0.5rem;
-    }
-    .toast {
-      padding: 0.75rem 1.5rem; border-radius: 8px; color: white;
-      font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      animation: slideUp 0.3s ease;
-    }
-    @keyframes slideUp {
-      from { transform: translateY(20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-    .toast-success { background: var(--success); }
-    .toast-error { background: var(--error); }
-    .toast-warning { background: var(--warning); color: #202124; }
-    .toast-emergency { background: var(--emergency); }
-    .toast-info { background: var(--primary); }
-
-    /* Responsive */
-    @media (max-width: 768px) {
-      .panel { width: calc(100% - 1.5rem); }
-      .login-box { padding: 1.5rem; }    }
+    #toast{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);
+      z-index:2000}
+    .toast{padding:0.75rem 1.5rem;border-radius:8px;color:white;font-weight:500;
+      margin-bottom:0.5rem;animation:slideUp 0.3s}
+    @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+    .toast-success{background:#34a853}
+    .toast-error{background:#ea4335}
+    .toast-warning{background:#f9ab00;color:#202124}
+    .toast-emergency{background:#d93025}
+    
+    /* Checkin */
+    .checkin{display:grid;grid-template-columns:repeat(4,1fr);gap:0.3rem;margin-top:0.75rem}
   </style>
 </head>
-<body data-theme="light">
+<body>
 
-  <!-- 🔐 Login -->
-  <div id="login-screen">
+  <!-- Login -->
+  <div id="login">
     <div class="login-box">
       <h1>🛰️ OpsTrack</h1>
-      <p>Sistem Penjejakan Operator Masa Nyata</p>
-      <button id="btn-login" class="btn btn-block" style="padding: 1rem; font-size: 1rem;">
+      <p>Sistem Penjejakan Operator</p>
+      <button class="btn btn-block" onclick="startApp()" style="padding:1rem;font-size:1rem">
         🚀 MULA SEKARANG
       </button>
-      <p style="margin-top: 1rem; font-size: 0.8rem; color: #999;">
-        ✅ Percuma • Tanpa Kad Kredit • GPS Real
+      <p style="margin-top:1rem;font-size:0.8rem;color:#999">
+        ✅ 100% Percuma • Tanpa Setup • GPS Real
       </p>
     </div>
   </div>
 
-  <!-- 🗺️ Dashboard -->
+  <!-- Dashboard -->
   <div id="dashboard" class="hidden">
     <header>
       <div class="logo">🛰️ OpsTrack</div>
-      <div class="header-right">
-        <div id="online-dot" title="Status Internet"></div>
-        <button id="theme-toggle" class="btn btn-sm">🌙</button>
-        <button id="btn-logout" class="btn btn-sm btn-warning">🚪</button>
-      </div>
+      <button class="btn btn-sm btn-warning" onclick="location.reload()">🚪 Keluar</button>
     </header>
-
     <div id="map"></div>
-
-    <!-- Operator Panel -->
+    
     <div class="panel bottom-left">
       <h4>📍 Lokasi Anda</h4>
       <div id="loc">Menunggu GPS...</div>
-      
-      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
-        <button id="btn-start" class="btn btn-success btn-sm" style="flex: 1;">▶ Start</button>
-        <button id="btn-stop" class="btn btn-warning btn-sm" style="flex: 1;" disabled>⏹ Stop</button>
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+        <button id="btn-start" class="btn btn-success btn-sm" style="flex:1" onclick="startTrack()">▶ Start</button>
+        <button id="btn-stop" class="btn btn-warning btn-sm" style="flex:1" onclick="stopTrack()" disabled>⏹ Stop</button>
       </div>
-
-      <div style="background: var(--bg); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border);">
-        <h4 style="font-size: 0.85rem; margin-bottom: 0.5rem;">🎯 Misi Semasa</h4>
-        <p style="font-size: 0.8rem; color: #666; margin-bottom: 0.5rem;">Delivery KLCC → Bangsar</p>
-        <div class="progress"><div class="progress-fill" style="width: 35%;"></div></div>
-        <small style="color: #666;">35% Selesai</small>
+      <div style="background:#f8f9fa;padding:0.75rem;border-radius:8px;border:1px solid #dadce0">
+        <h4 style="font-size:0.85rem;margin-bottom:0.5rem">🎯 Misi</h4>
+        <p style="font-size:0.8rem;color:#666;margin-bottom:0.5rem">Delivery KLCC → Bangsar</p>        <div style="height:6px;background:#dadce0;border-radius:3px;overflow:hidden;margin:0.5rem 0">
+          <div id="progress" style="height:100%;width:35%;background:#34a853"></div>
+        </div>
+        <small style="color:#666">35% Selesai</small>
       </div>
-
-      <div class="checkin-grid">        <button data-checkin="start" class="btn btn-sm">🚀</button>
-        <button data-checkin="checkpoint" class="btn btn-sm">✅</button>
-        <button data-checkin="rest" class="btn btn-sm">☕</button>
-        <button data-checkin="complete" class="btn btn-sm">🏁</button>
+      <div class="checkin">
+        <button class="btn btn-sm" onclick="checkin('🚀 Mula')">🚀</button>
+        <button class="btn btn-sm" onclick="checkin('✅ Checkpoint')">✅</button>
+        <button class="btn btn-sm" onclick="checkin('☕ Rehat')">☕</button>
+        <button class="btn btn-sm" onclick="checkin('🏁 Selesai')">🏁</button>
       </div>
     </div>
-
-    <!-- SOS -->
+    
     <div class="panel bottom-right">
-      <button id="btn-sos" class="btn btn-emergency btn-block" style="padding: 1rem;">
+      <button class="btn btn-emergency btn-block" onclick="sos()" style="padding:1rem">
         🚨 SOS KECEMASAN
       </button>
-      <p style="margin-top: 0.5rem; font-size: 0.7rem; color: #666; text-align: center;">
-        Tekan untuk hantar alert dengan lokasi
+      <p style="margin-top:0.5rem;font-size:0.7rem;color:#666;text-align:center">
+        Tekan untuk hantar alert
       </p>
     </div>
   </div>
 
-  <div id="toast-container"></div>
+  <div id="toast"></div>
+
+  <script>
+    let map,marker,polyline,route=[],watchId,tracking=false;
+
+    function startApp(){
+      document.getElementById('login').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      initMap();
+      toast('✅ Selamat datang!','success');
+    }
+
+    function initMap(){
+      map=L.map('map').setView([3.1390,101.6869],11);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+        attribution:'© OpenStreetMap',maxZoom:19
+      }).addTo(map);
+    }
+
+    function startTrack(){
+      if(!navigator.geolocation)return toast('❌ GPS tidak disokong','error');
+      watchId=navigator.geolocation.watchPosition(
+        p=>{
+          const{latitude:lat,longitude:lng,accuracy:acc,speed}=p.coords;
+          const spd=speed?Math.round(speed*3.6*10)/10:0;
+          document.getElementById('loc').innerHTML=`📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}<br>🎯 ${acc}m ${spd>0?'• 🚀 '+spd+' km/j':''}`;
+                    if(!marker){
+            marker=L.circleMarker([lat,lng],{radius:10,fillColor:'#1a73e8',color:'#fff',weight:3}).addTo(map);
+            marker.bindPopup('<b>Anda</b>').openPopup();
+          }else{
+            marker.setLatLng([lat,lng]);
+          }
+          
+          route.push([lng,lat]);
+          if(route.length>500)route.shift();
+          if(polyline)map.removeLayer(polyline);
+          if(route.length>1){
+            polyline=L.polyline(route.map(p=>[p[1],p[0]]),{color:'#1a73e8',weight:4}).addTo(map);
+          }
+          map.flyTo([lat,lng],15,{duration:0.5});
+        },
+        e=>toast('⚠️ GPS: '+e.message,'warning'),
+        {enableHighAccuracy:true,timeout:10000,maximumAge:0}
+      );
+      tracking=true;
+      document.getElementById('btn-start').disabled=true;
+      document.getElementById('btn-stop').disabled=false;
+      toast('🛰️ Tracking ON','success');
+    }
+
+    function stopTrack(){
+      if(watchId)navigator.geolocation.clearWatch(watchId);
+      tracking=false;
+      document.getElementById('btn-start').disabled=false;
+      document.getElementById('btn-stop').disabled=true;
+      toast('⏹ Tracking OFF','info');
+    }
+
+    function checkin(msg){toast(msg,'success');
+      const p=document.getElementById('progress');
+      p.style.width=Math.min(100,parseInt(p.style.width)+15)+'%';
+    }
+
+    function sos(){if(confirm('🚨 Hantar SOS?'))toast('🚨 SOS DIHANTAR!','emergency');}
+
+    function toast(msg,type='info'){
+      const t=document.createElement('div');
+      t.className='toast toast-'+type;
+      t.textContent=msg;
+      document.getElementById('toast').appendChild(t);
+      setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},4000);
+    }
+  </script>
 </body>
 </html>
