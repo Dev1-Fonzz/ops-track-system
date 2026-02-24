@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="ms" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="description" content="Sistem Penjejakan Operator Masa Nyata - OpsTrack" />
+  <meta name="theme-color" content="#1a73e8" />
+  <title>OpsTrack • Sistem Penjejakan Operator</title>
+
+  <!-- 🔐 Security Headers (disyorkan untuk production) -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://api.mapbox.com;
+    style-src 'self' 'unsafe-inline' https://api.mapbox.com;
+    connect-src 'self' https://ops-track-system-default-rtdb.asia-southeast1.firebasedatabase.app https://api.mapbox.com;
+    img-src 'self' data: https:;
+    font-src 'self' https://api.mapbox.com;
+  ">
+
+  <!-- 🗺️ Mapbox GL JS (Free Tier: 50k loads/bulan) -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+
+  <!-- ⚡ Firebase SDK (Modular) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+    import { getDatabase, ref, onValue, push, update, onDisconnect } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-database.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+
+    // 🎯 Konfigurasi Utama Sistem - Mudah diubah untuk fleksibiliti
+    window.OpsTrackConfig = {
+      firebase: {
+        apiKey: "AIzaSyABchyom-zF_ZWuV7HWiDLWBaopBQ1TYxk",
+        authDomain: "ops-track-system.firebaseapp.com",
+        databaseURL: "https://ops-track-system-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "ops-track-system",
+        storageBucket: "ops-track-system.firebasestorage.app",
+        messagingSenderId: "706189064777",
+        appId: "1:706189064777:web:03f71ed77e5c3e1f265d98"
+      },
+      mapbox: {
+        // 🆓 Daftar token percuma di: https://account.mapbox.com/access-tokens/
+        accessToken: "pk.eyJ1IjoieW91ci11c2VybmFtZSIsImEiOiJjbGV4YW1wbGUifQ.example_token_here",
+        style: "mapbox://styles/mapbox/streets-v12", // Ganti dengan 'satellite-v9' jika perlu
+        initialCenter: [101.6869, 3.1390], // Kuala Lumpur
+        initialZoom: 10
+      },
+      tracking: {
+        adaptiveFrequency: {
+          moving: 8000,      // 8 saat bila bergerak          stationary: 30000  // 30 saat bila berhenti
+        },
+        accuracyThreshold: 50, // meter - abaikan GPS kurang tepat
+        offlineQueueLimit: 100 // maksima data disimpan lokal bila offline
+      },
+      ui: {
+        theme: "light", // "light" | "dark" | "auto"
+        language: "ms", // "ms" | "en"
+        enableClustering: true,
+        maxVisibleOperators: 200 // had paparan untuk prestasi
+      }
+    };
+
+    // 🚀 Inisialisasi Firebase
+    const app = initializeApp(OpsTrackConfig.firebase);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+
+    // 🌐 State Management Global (Reactive Pattern)
+    window.OpsTrackState = {
+      user: null,
+      role: null, // 'operator' | 'admin'
+      activeMission: null,
+      operators: new Map(), // Cache operator untuk prestasi
+      map: null,
+      markers: new Map(),
+      polyline: null,
+      watchId: null,
+      isOnline: navigator.onLine,
+      lastKnownPosition: null
+    };
+
+    // 🧩 Modular Functions - Architecture yang boleh dikembangkan
+    const OpsTrack = {
+      // 🔐 Authentication Module
+      auth: {
+        async init() {
+          onAuthStateChanged(auth, (user) => {
+            if (user) {
+              OpsTrackState.user = user;
+              OpsTrack.ui.showDashboard();
+              OpsTrack.data.listenToMissions();
+            } else {
+              OpsTrack.ui.showLogin();
+            }
+          });
+          // Untuk production: Ganti dengan signInWithEmailAndPassword atau custom token
+          await signInAnonymously(auth).catch(console.error);
+        },
+        async switchRole(role) {          OpsTrackState.role = role;
+          localStorage.setItem('opsTrackRole', role);
+          OpsTrack.ui.renderDashboard();
+        }
+      },
+
+      // 🗺️ Map Module (Mapbox GL JS)
+      map: {
+        init(containerId = 'map') {
+          if (OpsTrackState.map) OpsTrackState.map.remove();
+          
+          OpsTrackState.map = new mapboxgl.Map({
+            container: containerId,
+            style: OpsTrackConfig.mapbox.style,
+            center: OpsTrackConfig.mapbox.initialCenter,
+            zoom: OpsTrackConfig.mapbox.initialZoom,
+            attributionControl: true,
+            fadeDuration: 0
+          });
+
+          // 🎨 Tambahkan kawalan peta
+          OpsTrackState.map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
+          OpsTrackState.map.addControl(new mapboxgl.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true,
+            showUserHeading: true
+          }), 'top-right');
+
+          // 🎯 Event listeners untuk interaksi
+          OpsTrackState.map.on('load', () => {
+            OpsTrack.map.setupLayers();
+            OpsTrack.data.listenToOperators();
+          });
+
+          return OpsTrackState.map;
+        },
+
+        setupLayers() {
+          // Tambahkan layer untuk polyline pergerakan
+          if (!OpsTrackState.map.getSource('route')) {
+            OpsTrackState.map.addSource('route', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: [] }
+            });
+            OpsTrackState.map.addLayer({
+              id: 'route-line',
+              type: 'line',
+              source: 'route',
+              layout: { 'line-join': 'round', 'line-cap': 'round' },
+              paint: {                'line-color': '#1a73e8',
+                'line-width': 4,
+                'line-opacity': ['case', ['==', ['get', 'status'], 'active'], 1, 0.5]
+              }
+            });
+          }
+        },
+
+        updateOperatorPosition(operatorId, coords, metadata = {}) {
+          const { lat, lng, accuracy, timestamp, speed } = coords;
+          
+          // Update atau buat marker baru
+          if (!OpsTrackState.markers.has(operatorId)) {
+            const el = OpsTrack.ui.createOperatorMarker(metadata);
+            const marker = new mapboxgl.Marker(el)
+              .setLngLat([lng, lat])
+              .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML(OpsTrack.ui.getOperatorPopupHTML(metadata)))
+              .addTo(OpsTrackState.map);
+            
+            OpsTrackState.markers.set(operatorId, marker);
+          } else {
+            const marker = OpsTrackState.markers.get(operatorId);
+            marker.setLngLat([lng, lat]);
+            marker.getPopup().setHTML(OpsTrack.ui.getOperatorPopupHTML(metadata));
+          }
+
+          // Update polyline jika ini operator aktif kita
+          if (OpsTrackState.role === 'operator' && OpsTrackState.user?.uid === operatorId) {
+            OpsTrack.map.updateMyRoute([lng, lat], timestamp);
+          }
+
+          // Animasi smooth untuk pergerakan
+          if (speed > 0.5) {
+            OpsTrackState.map.easeTo({
+              center: [lng, lat],
+              duration: 1000,
+              essential: true
+            });
+          }
+        },
+
+        updateMyRoute(newCoord, timestamp) {
+          const routeSource = OpsTrackState.map.getSource('route');
+          if (!routeSource) return;
+
+          const currentData = routeSource._data || { type: 'FeatureCollection', features: [] };
+          const newPoint = {
+            type: 'Feature',
+            properties: { timestamp, status: OpsTrackState.activeMission?.status || 'active' },
+            geometry: { type: 'Point', coordinates: newCoord }          };
+
+          // Tambahkan titik baru ke route
+          currentData.features.push(newPoint);
+          
+          // Limit points untuk prestasi (simpan 500 titik terakhir)
+          if (currentData.features.length > 500) {
+            currentData.features.shift();
+          }
+
+          routeSource.setData(currentData);
+          
+          // Auto-fit view jika route baru
+          if (currentData.features.length === 1) {
+            const bounds = new mapboxgl.LngLatBounds();
+            currentData.features.forEach(f => bounds.extend(f.geometry.coordinates));
+            OpsTrackState.map.fitBounds(bounds, { padding: 50, duration: 1500 });
+          }
+        },
+
+        fitToOperators(operatorIds = []) {
+          if (operatorIds.length === 0) return;
+          
+          const bounds = new mapboxgl.LngLatBounds();
+          operatorIds.forEach(id => {
+            const marker = OpsTrackState.markers.get(id);
+            if (marker) bounds.extend(marker.getLngLat());
+          });
+          
+          if (!bounds.isEmpty()) {
+            OpsTrackState.map.fitBounds(bounds, { padding: 80, duration: 1000 });
+          }
+        }
+      },
+
+      // 📡 Data Module (Firebase Realtime Database)
+      data: {
+        listenToOperators() {
+          const operatorsRef = ref(db, 'operators');
+          onValue(operatorsRef, (snapshot) => {
+            const data = snapshot.val();
+            if (!data) return;
+
+            Object.entries(data).forEach(([operatorId, operatorData]) => {
+              // Filter: hanya proses data yang valid dan dalam had paparan
+              if (OpsTrackConfig.ui.maxVisibleOperators > 0 && 
+                  OpsTrackState.operators.size >= OpsTrackConfig.ui.maxVisibleOperators &&
+                  !OpsTrackState.operators.has(operatorId)) {
+                return;
+              }
+              OpsTrackState.operators.set(operatorId, operatorData);
+              
+              // Hanya update UI jika operator mempunyai lokasi valid
+              if (operatorData.location?.lat && operatorData.location?.lng) {
+                OpsTrack.map.updateOperatorPosition(
+                  operatorId, 
+                  operatorData.location, 
+                  operatorData
+                );
+              }
+            });
+          }, { onlyOnce: false });
+        },
+
+        listenToMissions() {
+          const missionsRef = ref(db, 'missions');
+          onValue(missionsRef, (snapshot) => {
+            const missions = snapshot.val();
+            if (!missions) return;
+
+            // Cari misi aktif untuk operator ini
+            if (OpsTrackState.role === 'operator' && OpsTrackState.user) {
+              const myMission = Object.values(missions).find(m => 
+                m.assignedTo === OpsTrackState.user.uid && 
+                ['active', 'paused'].includes(m.status)
+              );
+              
+              if (myMission && myMission.id !== OpsTrackState.activeMission?.id) {
+                OpsTrackState.activeMission = myMission;
+                OpsTrack.ui.updateMissionPanel(myMission);
+                OpsTrack.tracking.start(); // Auto-start tracking bila dapat misi
+              }
+            }
+          });
+        },
+
+        async updateLocation(locationData) {
+          if (!OpsTrackState.user?.uid) return;
+          
+          const updates = {
+            [`operators/${OpsTrackState.user.uid}/location`]: locationData,
+            [`operators/${OpsTrackState.user.uid}/lastSeen`]: Date.now(),
+            [`operators/${OpsTrackState.user.uid}/status`]: locationData.speed > 0.5 ? 'moving' : 'stationary'
+          };
+
+          // Jika ada misi aktif, update progress juga
+          if (OpsTrackState.activeMission) {
+            updates[`missions/${OpsTrackState.activeMission.id}/currentLocation`] = locationData;
+          }
+          try {
+            await update(ref(db), updates);
+            OpsTrackState.lastKnownPosition = locationData;
+            return true;
+          } catch (error) {
+            console.error('Gagal update lokasi:', error);
+            // Queue untuk offline sync (implementasi lanjut)
+            OpsTrack.data.queueForOfflineSync(updates);
+            return false;
+          }
+        },
+
+        queueForOfflineSync(updates) {
+          // Implementasi asas offline queue
+          const queue = JSON.parse(localStorage.getItem('opsTrackOfflineQueue') || '[]');
+          queue.push({ updates, timestamp: Date.now() });
+          
+          // Limit queue size
+          if (queue.length > OpsTrackConfig.tracking.offlineQueueLimit) {
+            queue.shift();
+          }
+          
+          localStorage.setItem('opsTrackOfflineQueue', JSON.stringify(queue));
+          OpsTrack.ui.showToast('Lokasi disimpan untuk dihantar bila online', 'info');
+        },
+
+        async syncOfflineQueue() {
+          const queue = JSON.parse(localStorage.getItem('opsTrackOfflineQueue') || '[]');
+          if (queue.length === 0) return;
+
+          OpsTrack.ui.showToast(`Menghantar ${queue.length} data tertunggak...`, 'info');
+          
+          for (const item of queue) {
+            try {
+              await update(ref(db), item.updates);
+            } catch (e) {
+              console.warn('Gagal sync data offline:', e);
+              break; // Berhenti jika gagal, cuba lagi nanti
+            }
+          }
+          
+          // Clear queue yang berjaya dihantar
+          localStorage.removeItem('opsTrackOfflineQueue');
+          OpsTrack.ui.showToast('Semua data berjaya dihantar!', 'success');
+        }
+      },
+
+      // 🛰️ Tracking Module (GPS Management)
+      tracking: {        start() {
+          if (!navigator.geolocation) {
+            OpsTrack.ui.showToast('GPS tidak disokong pada peranti ini', 'error');
+            return;
+          }
+
+          // Hentikan watcher lama jika ada
+          if (OpsTrackState.watchId) {
+            navigator.geolocation.clearWatch(OpsTrackState.watchId);
+          }
+
+          const options = {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
+          };
+
+          OpsTrackState.watchId = navigator.geolocation.watchPosition(
+            (position) => OpsTrack.tracking.onLocationSuccess(position),
+            (error) => OpsTrack.tracking.onLocationError(error),
+            options
+          );
+
+          OpsTrack.ui.showToast('Penjejakan lokasi diaktifkan', 'success');
+        },
+
+        stop() {
+          if (OpsTrackState.watchId) {
+            navigator.geolocation.clearWatch(OpsTrackState.watchId);
+            OpsTrackState.watchId = null;
+            OpsTrack.ui.showToast('Penjejakan lokasi dihentikan', 'info');
+          }
+        },
+
+        onLocationSuccess(position) {
+          const { latitude, longitude, accuracy, speed } = position.coords;
+          
+          // Filter lokasi tidak tepat
+          if (accuracy > OpsTrackConfig.tracking.accuracyThreshold) {
+            console.log(`Lokasi diabaikan: ketepatan ${accuracy}m > threshold`);
+            return;
+          }
+
+          const locationData = {
+            lat: latitude,
+            lng: longitude,
+            accuracy,
+            speed: speed || 0,
+            timestamp: Date.now(),
+            altitude: position.coords.altitude || null          };
+
+          // Adaptive frequency: update Firebase ikut keadaan
+          const lastUpdate = OpsTrackState.lastKnownPosition?.timestamp || 0;
+          const frequency = speed > 0.5 
+            ? OpsTrackConfig.tracking.adaptiveFrequency.moving
+            : OpsTrackConfig.tracking.adaptiveFrequency.stationary;
+
+          if (Date.now() - lastUpdate >= frequency) {
+            OpsTrack.data.updateLocation(locationData);
+          }
+
+          // Update UI lokal segera (lebih responsif)
+          if (OpsTrackState.role === 'operator') {
+            OpsTrack.ui.updateLocationDisplay(locationData);
+          }
+        },
+
+        onLocationError(error) {
+          const messages = {
+            1: 'Akses lokasi ditolak oleh pengguna',
+            2: 'Lokasi tidak tersedia',
+            3: 'Masa tamat untuk dapatkan lokasi'
+          };
+          OpsTrack.ui.showToast(messages[error.code] || 'Ralat GPS', 'error');
+          console.warn('GPS Error:', error);
+        }
+      },
+
+      // 🎨 UI Module (DOM Manipulation & Rendering)
+      ui: {
+        init() {
+          this.bindEvents();
+          this.setupTheme();
+          this.checkOnlineStatus();
+          
+          // Auto-sync offline data bila online
+          window.addEventListener('online', () => {
+            OpsTrackState.isOnline = true;
+            OpsTrack.data.syncOfflineQueue();
+            this.updateOnlineIndicator(true);
+          });
+          
+          window.addEventListener('offline', () => {
+            OpsTrackState.isOnline = false;
+            this.updateOnlineIndicator(false);
+          });
+        },
+
+        bindEvents() {          // Toggle role (untuk demo - dalam production, gunakan auth sebenar)
+          document.getElementById('role-toggle')?.addEventListener('change', (e) => {
+            OpsTrack.auth.switchRole(e.target.value);
+          });
+
+          // Butang kawalan tracking
+          document.getElementById('btn-start-tracking')?.addEventListener('click', () => {
+            OpsTrack.tracking.start();
+          });
+          
+          document.getElementById('btn-stop-tracking')?.addEventListener('click', () => {
+            OpsTrack.tracking.stop();
+          });
+
+          // Butang SOS
+          document.getElementById('btn-sos')?.addEventListener('click', () => {
+            if (confirm('Hantar alert kecemasan? Lokasi anda akan dikongsi dengan admin.')) {
+              OpsTrack.data.updateLocation({
+                ...OpsTrackState.lastKnownPosition,
+                emergency: true,
+                emergencyTimestamp: Date.now()
+              });
+              this.showToast('🚨 ALERT KECEMASAN DIHANTAR!', 'emergency');
+            }
+          });
+
+          // Manual check-in points
+          document.querySelectorAll('[data-checkin]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              const type = e.currentTarget.dataset.checkin;
+              OpsTrack.data.updateLocation({
+                ...OpsTrackState.lastKnownPosition,
+                checkIn: type,
+                checkInTimestamp: Date.now()
+              });
+              this.showToast(`✓ Check-in: ${type}`, 'success');
+            });
+          });
+        },
+
+        setupTheme() {
+          const savedTheme = localStorage.getItem('opsTrackTheme') || OpsTrackConfig.ui.theme;
+          document.documentElement.setAttribute('data-theme', savedTheme);
+          
+          // Auto theme berdasarkan sistem
+          if (savedTheme === 'auto') {
+            const darkMode = window.matchMedia('(prefers-color-scheme: dark)');
+            document.documentElement.setAttribute('data-theme', darkMode.matches ? 'dark' : 'light');
+            darkMode.addEventListener('change', e => {
+              document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');            });
+          }
+        },
+
+        showDashboard() {
+          document.getElementById('auth-screen').classList.add('hidden');
+          document.getElementById('dashboard-screen').classList.remove('hidden');
+          this.renderDashboard();
+        },
+
+        showLogin() {
+          document.getElementById('dashboard-screen').classList.add('hidden');
+          document.getElementById('auth-screen').classList.remove('hidden');
+        },
+
+        renderDashboard() {
+          const role = OpsTrackState.role || localStorage.getItem('opsTrackRole') || 'operator';
+          document.body.setAttribute('data-role', role);
+          
+          // Inisialisasi peta jika belum
+          if (!OpsTrackState.map && document.getElementById('map')) {
+            OpsTrack.map.init('map');
+          }
+          
+          // Render panel mengikut role
+          if (role === 'admin') {
+            this.renderAdminPanel();
+          } else {
+            this.renderOperatorPanel();
+          }
+        },
+
+        renderOperatorPanel() {
+          // Update UI elements khusus operator
+          const missionPanel = document.getElementById('mission-panel');
+          if (missionPanel && OpsTrackState.activeMission) {
+            missionPanel.innerHTML = `
+              <div class="mission-card">
+                <h4>🎯 Misi Aktif</h4>
+                <p><strong>${OpsTrackState.activeMission.title}</strong></p>
+                <p>📍 Destinasi: ${OpsTrackState.activeMission.destination}</p>
+                <p>⏱ Mula: ${new Date(OpsTrackState.activeMission.startTime).toLocaleTimeString('ms-MY')}</p>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: ${OpsTrackState.activeMission.progress || 0}%"></div>
+                </div>
+                <small>${OpsTrackState.activeMission.progress || 0}% selesai</small>
+              </div>
+            `;
+          }
+        },
+        renderAdminPanel() {
+          // Update UI elements khusus admin
+          const controlsPanel = document.getElementById('admin-controls');
+          if (controlsPanel) {
+            controlsPanel.innerHTML = `
+              <div class="admin-tools">
+                <button class="btn btn-sm" onclick="OpsTrack.map.fitToOperators([...OpsTrackState.operators.keys()])">
+                  🗺️ Fit Semua
+                </button>
+                <button class="btn btn-sm" onclick="OpsTrack.ui.toggleClustering()">
+                  🔘 Clustering: ${OpsTrackConfig.ui.enableClustering ? 'ON' : 'OFF'}
+                </button>
+                <select id="filter-status" class="form-control" onchange="OpsTrack.ui.filterOperators(this.value)">
+                  <option value="all">Semua Status</option>
+                  <option value="moving">Bergerak</option>
+                  <option value="stationary">Berhenti</option>
+                  <option value="emergency">🚨 SOS</option>
+                </select>
+              </div>
+            `;
+          }
+        },
+
+        createOperatorMarker(metadata) {
+          const el = document.createElement('div');
+          el.className = `operator-marker ${metadata.status || 'unknown'} ${metadata.emergency ? 'emergency' : ''}`;
+          el.innerHTML = `
+            <div class="marker-icon">
+              ${metadata.emergency ? '🚨' : metadata.status === 'moving' ? '🚶' : '⏸'}
+            </div>
+            ${metadata.avatar ? `<img src="${metadata.avatar}" class="marker-avatar">` : ''}
+          `;
+          return el;
+        },
+
+        getOperatorPopupHTML(metadata) {
+          return `
+            <div class="popup-content">
+              <strong>${metadata.name || 'Operator'}</strong><br>
+              <small>ID: ${metadata.id?.slice(0,8)}...</small><br>
+              <hr style="margin:4px 0">
+              Status: <strong>${metadata.status || 'unknown'}</strong><br>
+              Misi: ${metadata.activeMission || '-'}<br>
+              Terakhir: ${metadata.lastSeen ? new Date(metadata.lastSeen).toLocaleTimeString('ms-MY') : '-'}<br>
+              ${metadata.location?.speed > 0 ? `Kelajuan: ${metadata.location.speed.toFixed(1)} km/j` : ''}
+            </div>
+          `;
+        },
+        updateLocationDisplay(location) {
+          const el = document.getElementById('location-display');
+          if (!el) return;
+          
+          el.innerHTML = `
+            <div class="location-info">
+              <span>📍 ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}</span>
+              <span>🎯 Ketepatan: ${location.accuracy.toFixed(0)}m</span>
+              ${location.speed > 0 ? `<span>🚀 ${location.speed.toFixed(1)} km/j</span>` : ''}
+            </div>
+          `;
+        },
+
+        updateMissionPanel(mission) {
+          const panel = document.getElementById('mission-details');
+          if (!panel) return;
+          
+          panel.innerHTML = `
+            <h4>${mission.title}</h4>
+            <p>${mission.description || ''}</p>
+            <div class="mission-stats">
+              <span>📏 ${mission.distance || 0} km</span>
+              <span>⏱ ${mission.estimatedDuration || '-'} min</span>
+            </div>
+          `;
+        },
+
+        showToast(message, type = 'info') {
+          const toast = document.createElement('div');
+          toast.className = `toast toast-${type}`;
+          toast.textContent = message;
+          toast.setAttribute('role', 'alert');
+          
+          document.getElementById('toast-container').appendChild(toast);
+          
+          // Auto-remove selepas 4 saat
+          setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+          }, 4000);
+        },
+
+        toggleClustering() {
+          OpsTrackConfig.ui.enableClustering = !OpsTrackConfig.ui.enableClustering;
+          // Implementasi clustering penuh memerlukan Mapbox GL JS advanced features
+          this.showToast(`Clustering: ${OpsTrackConfig.ui.enableClustering ? 'Diaktifkan' : 'Dinyahaktifkan'}`, 'info');
+          OpsTrack.map.init('map'); // Reload map untuk apply changes
+        },
+
+        filterOperators(status) {          // Filter paparan marker mengikut status
+          OpsTrackState.markers.forEach((marker, id) => {
+            const operator = OpsTrackState.operators.get(id);
+            if (status === 'all' || operator?.status === status) {
+              marker.getElement().style.display = 'block';
+            } else {
+              marker.getElement().style.display = 'none';
+            }
+          });
+        },
+
+        updateOnlineIndicator(isOnline) {
+          const indicator = document.getElementById('online-indicator');
+          if (indicator) {
+            indicator.className = `online-indicator ${isOnline ? 'online' : 'offline'}`;
+            indicator.title = isOnline ? 'Dalam talian' : 'Luar talian - data akan disync kemudian';
+          }
+        },
+
+        checkOnlineStatus() {
+          this.updateOnlineIndicator(OpsTrackState.isOnline);
+        }
+      }
+    };
+
+    // 🚀 Boot Application
+    document.addEventListener('DOMContentLoaded', () => {
+      OpsTrack.ui.init();
+      OpsTrack.auth.init();
+      
+      // Log versi untuk debugging
+      console.log('✅ OpsTrack System Loaded v1.0.0');
+      console.log('🔑 Role semasa:', OpsTrackState.role || 'belum ditetapkan');
+    });
+
+    // 🌍 Expose ke global untuk debugging (nyahaktifkan dalam production)
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      window.OpsTrack = OpsTrack;
+      window.OpsTrackState = OpsTrackState;
+      console.warn('⚠️ Debug mode: OpsTrack exposed to window');
+    }
+  </script>
+
+  <!-- 🎨 CSS: Professional, Responsive, Themable -->
+  <style>
+    /* ===== CSS Variables untuk Fleksibiliti & Theming ===== */
+    :root {
+      /* Colors - Light Theme Default */
+      --color-primary: #1a73e8;
+      --color-primary-dark: #1557b0;      --color-success: #34a853;
+      --color-warning: #f9ab00;
+      --color-error: #ea4335;
+      --color-emergency: #d93025;
+      
+      --color-bg: #ffffff;
+      --color-bg-secondary: #f8f9fa;
+      --color-bg-card: #ffffff;
+      --color-text: #202124;
+      --color-text-secondary: #5f6368;
+      --color-border: #dadce0;
+      
+      /* Spacing & Layout */
+      --spacing-xs: 0.25rem;
+      --spacing-sm: 0.5rem;
+      --spacing-md: 1rem;
+      --spacing-lg: 1.5rem;
+      --spacing-xl: 2rem;
+      
+      --border-radius: 8px;
+      --border-radius-lg: 12px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.15);
+      --shadow-lg: 0 4px 20px rgba(0,0,0,0.2);
+      
+      /* Typography */
+      --font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      --font-size-sm: 0.875rem;
+      --font-size-base: 1rem;
+      --font-size-lg: 1.25rem;
+      --font-size-xl: 1.5rem;
+      
+      /* Z-index Layers */
+      --z-map: 1;
+      --z-ui: 10;
+      --z-modal: 100;
+      --z-toast: 1000;
+    }
+
+    /* Dark Theme Support */
+    [data-theme="dark"] {
+      --color-bg: #1a1a1a;
+      --color-bg-secondary: #2d2d2d;
+      --color-bg-card: #252525;
+      --color-text: #e8eaed;
+      --color-text-secondary: #9aa0a6;
+      --color-border: #3c4043;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    /* ===== Base Reset & Typography ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: var(--font-family);
+      font-size: var(--font-size-base);
+      color: var(--color-text);
+      background: var(--color-bg);
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+
+    /* ===== Layout ===== */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .screen {
+      display: none;
+      flex: 1;
+      position: relative;
+    }
+    
+    .screen.active {
+      display: flex;
+    }
+
+    /* ===== Header ===== */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--spacing-md) var(--spacing-lg);
+      background: var(--color-bg-card);
+      border-bottom: 1px solid var(--color-border);
+      z-index: var(--z-ui);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      font-weight: 600;
+      font-size: var(--font-size-lg);
+      color: var(--color-primary);    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+    }
+
+    /* ===== Map Container ===== */
+    #map {
+      flex: 1;
+      width: 100%;
+      min-height: 0; /* Penting untuk flex child */
+    }
+
+    /* ===== UI Overlays ===== */
+    .panel {
+      position: absolute;
+      background: var(--color-bg-card);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: var(--spacing-md);
+      z-index: var(--z-ui);
+      max-width: 320px;
+      width: calc(100% - var(--spacing-lg)*2);
+    }
+
+    .panel.top-right { top: var(--spacing-lg); right: var(--spacing-lg); }
+    .panel.bottom-left { bottom: var(--spacing-lg); left: var(--spacing-lg); }
+    .panel.bottom-right { bottom: var(--spacing-lg); right: var(--spacing-lg); }
+
+    /* ===== Operator Marker Styling ===== */
+    .operator-marker {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--color-primary);
+      border: 3px solid var(--color-bg);
+      box-shadow: var(--shadow-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+    
+    .operator-marker:hover {
+      transform: scale(1.1);
+    }
+        .operator-marker.moving { background: var(--color-success); }
+    .operator-marker.stationary { background: var(--color-warning); }
+    .operator-marker.emergency { 
+      background: var(--color-emergency);
+      animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(217, 48, 37, 0.7); }
+      70% { box-shadow: 0 0 0 12px rgba(217, 48, 37, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(217, 48, 37, 0); }
+    }
+
+    .marker-icon {
+      font-size: 16px;
+      color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+
+    .marker-avatar {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid white;
+      object-fit: cover;
+    }
+
+    /* ===== Controls & Buttons ===== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+      padding: var(--spacing-sm) var(--spacing-md);
+      background: var(--color-primary);
+      color: white;
+      border: none;
+      border-radius: var(--border-radius);
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+    
+    .btn:hover { background: var(--color-primary-dark); }
+    .btn:active { transform: translateY(1px); }
+    
+    .btn-sm { padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-sm); }
+    .btn-success { background: var(--color-success); }
+    .btn-warning { background: var(--color-warning); color: #202124; }    .btn-error { background: var(--color-error); }
+    .btn-emergency { 
+      background: var(--color-emergency);
+      animation: pulse-btn 2s infinite;
+    }
+    
+    @keyframes pulse-btn {
+      0% { box-shadow: 0 0 0 0 rgba(217, 48, 37, 0.6); }
+      70% { box-shadow: 0 0 0 10px rgba(217, 48, 37, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(217, 48, 37, 0); }
+    }
+
+    /* ===== Form Elements ===== */
+    .form-control {
+      padding: var(--spacing-sm);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      background: var(--color-bg);
+      color: var(--color-text);
+      font-size: var(--font-size-base);
+    }
+    
+    .form-control:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.2);
+    }
+
+    /* ===== Cards & Panels ===== */
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--border-radius);
+      padding: var(--spacing-md);
+      margin-bottom: var(--spacing-md);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--color-border);
+    }
+
+    .mission-card {
+      border-left: 4px solid var(--color-primary);
+    }
+    
+    .mission-card h4 { margin-bottom: var(--spacing-sm); }
+    .mission-card p { margin: var(--spacing-xs) 0; color: var(--color-text-secondary); }
+
+    .progress-bar {
+      height: 6px;
+      background: var(--color-border);
+      border-radius: 3px;
+      margin: var(--spacing-sm) 0;      overflow: hidden;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      background: var(--color-success);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    /* ===== Toast Notifications ===== */
+    #toast-container {
+      position: fixed;
+      bottom: var(--spacing-lg);
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: var(--z-toast);
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-sm);
+      width: 90%;
+      max-width: 400px;
+      pointer-events: none; /* Allow clicks to pass through container */
+    }
+    
+    .toast {
+      padding: var(--spacing-md);
+      border-radius: var(--border-radius);
+      color: white;
+      font-weight: 500;
+      box-shadow: var(--shadow-lg);
+      pointer-events: auto;
+      opacity: 1;
+      transition: opacity 0.3s ease;
+      animation: slideUp 0.3s ease;
+    }
+    
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    
+    .toast-info { background: var(--color-primary); }
+    .toast-success { background: var(--color-success); }
+    .toast-warning { background: var(--color-warning); color: #202124; }
+    .toast-error { background: var(--color-error); }
+    .toast-emergency { 
+      background: var(--color-emergency);
+      animation: pulse-toast 1s infinite;
+    }    
+    @keyframes pulse-toast {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.9; }
+    }
+
+    /* ===== Online Indicator ===== */
+    .online-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--color-error);
+      border: 2px solid var(--color-bg);
+      box-shadow: var(--shadow-sm);
+      transition: background 0.3s ease;
+    }
+    
+    .online-indicator.online { background: var(--color-success); }
+
+    /* ===== Utility Classes ===== */
+    .hidden { display: none !important; }
+    .text-center { text-align: center; }
+    .text-sm { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+    .mt-sm { margin-top: var(--spacing-sm); }
+    .mb-sm { margin-bottom: var(--spacing-sm); }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .gap-sm { gap: var(--spacing-sm); }
+    .justify-between { justify-content: space-between; }
+
+    /* ===== Responsive Design ===== */
+    @media (max-width: 768px) {
+      .panel {
+        max-width: calc(100% - var(--spacing-lg));
+        width: auto;
+      }
+      
+      .panel.bottom-left,
+      .panel.bottom-right {
+        left: var(--spacing-md);
+        right: var(--spacing-md);
+        bottom: var(--spacing-md);
+      }
+      
+      .header {
+        padding: var(--spacing-sm) var(--spacing-md);
+      }
+      
+      .logo span { display: none; } /* Sembunyikan teks logo pada mobile */
+    }
+    /* ===== Print Styles ===== */
+    @media print {
+      #map, .panel, .header { display: none !important; }
+      body { background: white; color: black; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 🔐 Authentication Screen -->
+    <div id="auth-screen" class="screen active">
+      <div class="panel" style="top:50%;left:50%;transform:translate(-50%,-50%);text-align:center">
+        <h2 style="margin-bottom:var(--spacing-lg)">OpsTrack</h2>
+        <p class="text-sm mb-sm">Sistem Penjejakan Operator Masa Nyata</p>
+        
+        <div class="mb-sm">
+          <label for="role-toggle" class="text-sm">Mod Paparan:</label>
+          <select id="role-toggle" class="form-control mt-sm">
+            <option value="operator">👤 Operator</option>
+            <option value="admin">👁️ Admin/Monitor</option>
+          </select>
+        </div>
+        
+        <button class="btn" style="width:100%" onclick="OpsTrack.auth.init()">
+          Mula Sistem
+        </button>
+        
+        <p class="text-sm mt-sm" style="color:var(--color-text-secondary)">
+          🔐 Untuk production: Ganti dengan login sebenar (email/password)
+        </p>
+      </div>
+    </div>
+
+    <!-- 🗺️ Main Dashboard -->
+    <div id="dashboard-screen" class="screen">
+      <!-- Header -->
+      <header class="header">
+        <div class="logo">
+          <span>🛰️</span>
+          <span>OpsTrack</span>
+        </div>
+        <div class="header-actions">
+          <div id="online-indicator" class="online-indicator" title="Status sambungan"></div>
+          <select id="theme-toggle" class="form-control" onchange="localStorage.setItem('opsTrackTheme',this.value);location.reload()">
+            <option value="light">☀️ Light</option>
+            <option value="dark">🌙 Dark</option>
+            <option value="auto">🔄 Auto</option>
+          </select>
+        </div>      </header>
+
+      <!-- Map Container -->
+      <div id="map"></div>
+
+      <!-- Operator Panel (Bottom Left) -->
+      <div class="panel bottom-left" id="operator-panel" data-role="operator">
+        <div id="location-display" class="mb-sm text-sm"></div>
+        
+        <div class="flex gap-sm mb-sm">
+          <button id="btn-start-tracking" class="btn btn-sm btn-success">▶ Start</button>
+          <button id="btn-stop-tracking" class="btn btn-sm btn-warning">⏹ Stop</button>
+        </div>
+        
+        <div id="mission-panel"></div>
+        
+        <div class="flex gap-sm mt-sm">
+          <button data-checkin="start" class="btn btn-sm">🚀 Mula</button>
+          <button data-checkin="checkpoint" class="btn btn-sm">✅ Checkpoint</button>
+          <button data-checkin="complete" class="btn btn-sm">🏁 Selesai</button>
+        </div>
+      </div>
+
+      <!-- Admin Controls (Top Right) -->
+      <div class="panel top-right" id="admin-controls" data-role="admin">
+        <h4 style="margin-bottom:var(--spacing-sm)">🎮 Kawalan Admin</h4>
+        <div id="admin-tools"></div>
+        <div id="mission-details" class="mt-sm"></div>
+      </div>
+
+      <!-- Emergency Button (Bottom Right) -->
+      <div class="panel bottom-right">
+        <button id="btn-sos" class="btn btn-emergency" style="width:100%;padding:var(--spacing-md)">
+          🚨 SOS / KECEMASAN
+        </button>
+        <p class="text-sm text-center mt-sm" style="color:var(--color-text-secondary)">
+          Tekan untuk hantar alert dengan lokasi terkini
+        </p>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+  </div>
+
+  <!-- 🧩 Initialization Script (Non-module fallback) -->
+  <script>
+    // Fallback untuk browser lama yang tidak support ES6 modules
+    if (typeof document.createElement('script').type !== 'module') {
+      document.write('<div style="padding:20px;text-align:center;color:#ea4335">⚠️ Browser anda tidak menyokong fitur moden. Sila gunakan Chrome, Firefox atau Edge terkini.</div>');    }
+  </script>
+</body>
+</html>
